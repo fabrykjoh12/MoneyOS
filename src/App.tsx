@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { initialGoals, safeToSpend, steadyScore, goalSchedule } from './kernel/engine'
 import { defaultRules } from './kernel/data'
+import { loadState, saveState } from './kernel/persist'
 import type { Goal, Reservation } from './kernel/types'
 import { Today } from './screens/Today'
 import { HorizonView } from './screens/HorizonView'
 import { Plans } from './screens/Plans'
 import { Money } from './screens/Money'
+import { Onboarding } from './screens/Onboarding'
 import { PilotSheet } from './components/Pilot'
 import { DerivationSheet } from './components/Derivation'
 import { SimulatorSheet } from './components/Simulator'
@@ -41,15 +43,28 @@ const ICONS: Record<Tab, JSX.Element> = {
   ),
 }
 
+function orderGoals(order: string[]): Goal[] {
+  if (order.length === 0) return initialGoals
+  const byId = new Map(initialGoals.map((g) => [g.id, g]))
+  const ordered = order.map((id) => byId.get(id)).filter((g): g is Goal => !!g)
+  const missing = initialGoals.filter((g) => !order.includes(g.id))
+  return [...ordered, ...missing]
+}
+
 export default function App() {
+  const initial = useMemo(() => loadState(), [])
+
+  const [onboardingDone, setOnboardingDone] = useState(initial.onboardingDone)
   const [tab, setTab] = useState<Tab>('today')
   const [sheet, setSheet] = useState<SheetKind>(null)
-  const [goals, setGoals] = useState<Goal[]>(initialGoals)
-  const [reservations, setReservations] = useState<Reservation[]>([])
-  const [discreet, setDiscreet] = useState(false)
-  const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const [goals, setGoals] = useState<Goal[]>(() => orderGoals(initial.goalOrder))
+  const [reservations, setReservations] = useState<Reservation[]>(initial.reservations)
+  const [bufferFloor, setBufferFloor] = useState(initial.bufferFloor)
+  const [discreet, setDiscreet] = useState(initial.discreet)
+  const [dark, setDark] = useState(() => initial.theme === 'dark' || (initial.theme === null && window.matchMedia('(prefers-color-scheme: dark)').matches))
   const [toast, setToast] = useState<string | null>(null)
-  const rules = defaultRules
+
+  const rules = useMemo(() => ({ ...defaultRules, bufferFloor }), [bufferFloor])
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light'
@@ -61,6 +76,18 @@ export default function App() {
     return () => clearTimeout(t)
   }, [toast])
 
+  // Persist on every change that matters — this is the whole of "sync" for now.
+  useEffect(() => {
+    saveState({
+      onboardingDone,
+      bufferFloor,
+      goalOrder: goals.map((g) => g.id),
+      reservations,
+      discreet,
+      theme: dark ? 'dark' : 'light',
+    })
+  }, [onboardingDone, bufferFloor, goals, reservations, discreet, dark])
+
   const safe = useMemo(() => safeToSpend(rules, reservations), [rules, reservations])
   const score = useMemo(() => steadyScore(rules), [rules])
   const plans = useMemo(() => goalSchedule(goals), [goals])
@@ -68,6 +95,20 @@ export default function App() {
   const reserve = (name: string, amount: number) => {
     setReservations((r) => [...r, { id: `${Date.now()}`, name, amount }])
     setToast(`Reserved — your Safe number already knows.`)
+  }
+
+  if (!onboardingDone) {
+    return (
+      <div className="phone">
+        <Onboarding
+          onComplete={(floor, stressChoice) => {
+            setBufferFloor(floor)
+            saveState({ stressChoice })
+            setOnboardingDone(true)
+          }}
+        />
+      </div>
+    )
   }
 
   return (

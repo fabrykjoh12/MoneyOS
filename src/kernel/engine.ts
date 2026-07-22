@@ -69,6 +69,40 @@ function occurrencesBetween(c: Commitment, after: Date, until: Date): Date[] {
   return out
 }
 
+// ── Onboarding: a buffer floor suggested from the user's own bills ──────
+
+export function suggestedBufferFloor(): number {
+  const essential = sum(commitments.filter((c) => c.kind === 'bill').map((c) => c.amount))
+  return Math.round((essential * 0.22) / 100) * 100
+}
+
+export interface RevealLine {
+  label: string
+  detail: string
+}
+
+export function revealLines(): RevealLine[] {
+  const bills = commitments.filter((c) => c.kind === 'bill')
+  const subs = commitments.filter((c) => c.kind === 'subscription')
+  const income = commitments.find((c) => c.kind === 'income')!
+  return [
+    { label: 'Income found', detail: `${income.name.split('—')[0].trim()} · ${income.amount.toLocaleString('nb-NO')} kr on the ${income.dayOfMonth}${ordinal(income.dayOfMonth)}` },
+    { label: 'Bills detected', detail: `${bills.length} recurring · ${sum(bills.map((b) => b.amount)).toLocaleString('nb-NO')} kr a month` },
+    { label: 'Subscriptions found', detail: `${subs.length} recurring · ${sum(subs.map((s) => s.amount)).toLocaleString('nb-NO')} kr a month` },
+    { label: 'Buffer suggested', detail: `${suggestedBufferFloor().toLocaleString('nb-NO')} kr, from your bill pattern` },
+  ]
+}
+
+function ordinal(n: number): string {
+  if (n >= 11 && n <= 13) return 'th'
+  switch (n % 10) {
+    case 1: return 'st'
+    case 2: return 'nd'
+    case 3: return 'rd'
+    default: return 'th'
+  }
+}
+
 // ── Safe-to-Spend ────────────────────────────────────────────────────────
 
 export function safeToSpend(rules: Rules, reservations: Reservation[]): SafeBreakdown {
