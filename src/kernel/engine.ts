@@ -7,11 +7,12 @@ import type {
   Reservation,
   Rules,
   SafeBreakdown,
+  Scenario,
   Score,
   Txn,
   Verdict,
 } from './types'
-import { daysBetween } from './format'
+import { dateReady, daysBetween, signedKr } from './format'
 
 // ─────────────────────────────────────────────────────────────────────────
 // The Kernel. Deterministic, explainable, no network, no randomness at
@@ -278,8 +279,9 @@ export interface GoalPlan {
   monthsLeft: number
 }
 
-export function goalSchedule(order: Goal[]): GoalPlan[] {
-  const pool = 6000
+export const BASE_MONTHLY_POOL = 6000
+
+export function goalSchedule(order: Goal[], pool: number = BASE_MONTHLY_POOL): GoalPlan[] {
   const saved = new Map(order.map((g) => [g.id, g.saved]))
   const done = new Map<string, number>() // goalId → month index completed
   const firstMonthly = new Map<string, number>()
@@ -317,6 +319,92 @@ export function goalSchedule(order: Goal[]): GoalPlan[] {
 const defaultishRules: Rules = { bufferFloor: 3000, paydayDay: 25, strictness: 'balanced' }
 
 export const initialGoals: Goal[] = baseGoals
+
+// ── Digital Twin: scenarios ──────────────────────────────────────────────
+// A scenario is a persistent income/cost delta. It changes how much monthly
+// surplus is left to fund goals, and — if it zeroes out income entirely —
+// becomes a runway stress test. Composable, deterministic, no hand-authored
+// narrative text: every number here is derived from the same ledger as
+// everything else.
+
+export interface ScenarioImpact {
+  pool: number
+  goalPlans: GoalPlan[]
+  monthlySurplusBefore: number
+  monthlySurplusAfter: number
+  isIncomeStop: boolean
+  runwayMonths: number | null
+  runwayDate: Date | null
+}
+
+export function simulateScenario(goals: Goal[], scenario: Scenario): ScenarioImpact {
+  const liquid = sum(accounts.filter((a) => a.kind !== 'credit').map((a) => a.balance))
+  const fixed = sum(commitments.filter((c) => c.kind !== 'income').map((c) => c.amount))
+  const burnBase = fixed + dailySpend * 30.4
+  const incomeBase = commitments.find((c) => c.kind === 'income')!.amount
+
+  const incomeAfter = incomeBase + scenario.incomeDelta
+  const burnAfter = burnBase + scenario.recurringDelta
+  const surplusBefore = incomeBase - burnBase
+  const surplusAfter = incomeAfter - burnAfter
+
+  const isIncomeStop = incomeAfter <= 0
+  const rawPool = BASE_MONTHLY_POOL + scenario.incomeDelta - scenario.recurringDelta
+  const pool = isIncomeStop ? 0 : Math.max(0, Math.min(rawPool, Math.max(0, surplusAfter)))
+
+  const runwayMonths = isIncomeStop ? liquid / Math.max(1, burnAfter) : null
+  const runwayDate = runwayMonths !== null ? addDays(TODAY, Math.round(runwayMonths * 30.4)) : null
+
+  return {
+    pool,
+    goalPlans: goalSchedule(goals, pool),
+    monthlySurplusBefore: surplusBefore,
+    monthlySurplusAfter: surplusAfter,
+    isIncomeStop,
+    runwayMonths,
+    runwayDate,
+  }
+}
+
+function describeDays(n: number): string {
+  return n >= 14 ? `${Math.round(n / 7)} weeks` : `${n} day${n === 1 ? '' : 's'}`
+}
+
+export function describeScenario(goals: Goal[], scenario: Scenario): { headline: string; detail: string; impact: ScenarioImpact } {
+  const impact = simulateScenario(goals, scenario)
+
+  if (impact.isIncomeStop) {
+    return {
+      headline: `Okay for ${impact.runwayMonths!.toFixed(1)} months`,
+      detail: `until ${dateReady(impact.runwayDate!)} — goal funding pauses`,
+      impact,
+    }
+  }
+
+  const baseline = goalSchedule(goals)
+  let worst: { name: string; days: number } | null = null
+  let anyDefined = false
+  for (const p of impact.goalPlans) {
+    const b = baseline.find((x) => x.goal.id === p.goal.id)!
+    if (p.readyDate && b.readyDate) {
+      anyDefined = true
+      const days = Math.round((p.readyDate.getTime() - b.readyDate.getTime()) / 86400000)
+      if (!worst || Math.abs(days) > Math.abs(worst.days)) worst = { name: p.goal.name, days }
+    }
+  }
+
+  const incomePart = scenario.incomeDelta !== 0 ? `income ${signedKr(scenario.incomeDelta)}` : null
+  const costPart = scenario.recurringDelta !== 0 ? `costs ${signedKr(scenario.recurringDelta)}` : null
+  const headline = [incomePart, costPart].filter(Boolean).join(' · ') || 'No change'
+
+  let detail: string
+  if (!anyDefined) detail = 'goal funding pauses under this scenario'
+  else if (!worst || worst.days === 0) detail = 'every goal holds its date'
+  else if (worst.days > 0) detail = `${worst.name} slips ${describeDays(worst.days)}`
+  else detail = `${worst.name} arrives ${describeDays(-worst.days)} early`
+
+  return { headline, detail, impact }
+}
 
 // ── Steady Score ─────────────────────────────────────────────────────────
 

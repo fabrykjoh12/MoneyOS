@@ -1,4 +1,4 @@
-import type { Account, Commitment, Goal, Rules, SubscriptionInsight, Txn } from './types'
+import type { Account, Commitment, Goal, Rules, Scenario, SubscriptionInsight, Txn } from './types'
 
 // Deterministic demo ledger: ~7 months of history generated relative to
 // "today" with a seeded PRNG, so the app always opens onto a coherent life.
@@ -45,6 +45,12 @@ export const defaultRules: Rules = {
   paydayDay: 25,
   strictness: 'balanced',
 }
+
+export const defaultScenarios: Scenario[] = [
+  { id: 's-oslo', name: 'Move to Oslo sentrum', incomeDelta: 0, recurringDelta: 3400 },
+  { id: 's-80', name: 'Drop to 80% hours', incomeDelta: -8500, recurringDelta: 0 },
+  { id: 's-stop', name: 'If income stopped today', incomeDelta: -42500, recurringDelta: 0 },
+]
 
 export const subscriptionInsights: SubscriptionInsight[] = [
   { kind: 'price-rise', commitmentId: 'c-spotify', text: 'Rose 149 → 169 kr two months ago (+13%).' },

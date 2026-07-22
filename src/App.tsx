@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { initialGoals, safeToSpend, steadyScore, goalSchedule } from './kernel/engine'
-import { defaultRules } from './kernel/data'
+import { defaultRules, defaultScenarios } from './kernel/data'
 import { loadState, saveState } from './kernel/persist'
-import type { Goal, Reservation } from './kernel/types'
+import type { Goal, Reservation, Scenario } from './kernel/types'
 import { Today } from './screens/Today'
 import { HorizonView } from './screens/HorizonView'
 import { Plans } from './screens/Plans'
@@ -12,9 +12,10 @@ import { PilotSheet } from './components/Pilot'
 import { DerivationSheet } from './components/Derivation'
 import { SimulatorSheet } from './components/Simulator'
 import { ScoreSheet } from './components/ScoreSheet'
+import { ScenarioSheet } from './components/ScenarioSheet'
 
 type Tab = 'today' | 'horizon' | 'plans' | 'money'
-type SheetKind = null | 'why' | 'simulator' | 'pilot' | 'score'
+type SheetKind = null | 'why' | 'simulator' | 'pilot' | 'score' | 'scenario'
 
 const ICONS: Record<Tab, JSX.Element> = {
   today: (
@@ -59,6 +60,8 @@ export default function App() {
   const [sheet, setSheet] = useState<SheetKind>(null)
   const [goals, setGoals] = useState<Goal[]>(() => orderGoals(initial.goalOrder))
   const [reservations, setReservations] = useState<Reservation[]>(initial.reservations)
+  const [scenarios, setScenarios] = useState<Scenario[]>(initial.scenarios ?? defaultScenarios)
+  const [scenarioEditingId, setScenarioEditingId] = useState<string | null>(null)
   const [bufferFloor, setBufferFloor] = useState(initial.bufferFloor)
   const [discreet, setDiscreet] = useState(initial.discreet)
   const [dark, setDark] = useState(() => initial.theme === 'dark' || (initial.theme === null && window.matchMedia('(prefers-color-scheme: dark)').matches))
@@ -83,10 +86,11 @@ export default function App() {
       bufferFloor,
       goalOrder: goals.map((g) => g.id),
       reservations,
+      scenarios,
       discreet,
       theme: dark ? 'dark' : 'light',
     })
-  }, [onboardingDone, bufferFloor, goals, reservations, discreet, dark])
+  }, [onboardingDone, bufferFloor, goals, reservations, scenarios, discreet, dark])
 
   const safe = useMemo(() => safeToSpend(rules, reservations), [rules, reservations])
   const score = useMemo(() => steadyScore(rules), [rules])
@@ -131,7 +135,21 @@ export default function App() {
       {tab === 'horizon' && (
         <HorizonView rules={rules} reservations={reservations} onSimulate={() => setSheet('simulator')} onToast={setToast} />
       )}
-      {tab === 'plans' && <Plans goals={goals} onReorder={setGoals} onSimulate={() => setSheet('simulator')} />}
+      {tab === 'plans' && (
+        <Plans
+          goals={goals}
+          scenarios={scenarios}
+          onReorder={setGoals}
+          onOpenScenario={(id) => {
+            setScenarioEditingId(id)
+            setSheet('scenario')
+          }}
+          onNewScenario={() => {
+            setScenarioEditingId(null)
+            setSheet('scenario')
+          }}
+        />
+      )}
       {tab === 'money' && <Money onSimulate={() => setSheet('simulator')} onToast={setToast} />}
 
       <button className="pilot-orb breathing" onClick={() => setSheet('pilot')} aria-label="Open Pilot">
@@ -159,6 +177,23 @@ export default function App() {
       )}
       {sheet === 'pilot' && <PilotSheet rules={rules} onClose={() => setSheet(null)} onToast={setToast} />}
       {sheet === 'score' && <ScoreSheet score={score} onClose={() => setSheet(null)} />}
+      {sheet === 'scenario' && (
+        <ScenarioSheet
+          goals={goals}
+          existing={scenarioEditingId ? scenarios.find((s) => s.id === scenarioEditingId) ?? null : null}
+          onSave={(s) => {
+            setScenarios((prev) => (prev.some((p) => p.id === s.id) ? prev.map((p) => (p.id === s.id ? s : p)) : [...prev, s]))
+            setSheet(null)
+            setToast(scenarioEditingId ? 'Scenario updated.' : 'Scenario saved — it stays live as your numbers change.')
+          }}
+          onDelete={(id) => {
+            setScenarios((prev) => prev.filter((p) => p.id !== id))
+            setSheet(null)
+            setToast('Scenario removed.')
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </div>

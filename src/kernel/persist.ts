@@ -1,4 +1,4 @@
-import type { Reservation } from './types'
+import type { Reservation, Scenario } from './types'
 
 // Local persistence. Nothing here talks to a network — the same boundary
 // the architecture doc draws for the on-device Kernel: state lives with
@@ -12,6 +12,7 @@ export interface PersistedState {
   bufferFloor: number
   goalOrder: string[]
   reservations: Reservation[]
+  scenarios: Scenario[] | null // null = not yet initialized, seed with defaults
   discreet: boolean
   theme: 'light' | 'dark' | null // null = follow system
 }
@@ -22,6 +23,7 @@ const DEFAULTS: PersistedState = {
   bufferFloor: 3000,
   goalOrder: [],
   reservations: [],
+  scenarios: null,
   discreet: false,
   theme: null,
 }

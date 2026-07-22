@@ -69,6 +69,13 @@ export interface Reservation {
   amount: number
 }
 
+export interface Scenario {
+  id: string
+  name: string
+  incomeDelta: number // monthly, signed
+  recurringDelta: number // monthly, signed — new/changed recurring costs
+}
+
 export interface HorizonEvent {
   label: string
   amount: number // signed

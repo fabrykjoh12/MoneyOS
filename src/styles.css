@@ -708,6 +708,47 @@ h1.title {
   border-color: var(--accent);
 }
 
+/* ── scenario builder ── */
+
+.scenario-name {
+  width: 100%;
+  border: 0.5px solid var(--line);
+  background: var(--paper);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  outline: none;
+  margin-top: 4px;
+}
+.scenario-name:focus {
+  border-color: var(--accent);
+}
+.scenario-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--line);
+  font-size: 14.5px;
+}
+.scenario-field input {
+  width: 110px;
+  text-align: right;
+  border: 0.5px solid var(--line);
+  background: var(--paper);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 14.5px;
+  color: var(--ink);
+  outline: none;
+}
+.scenario-field input:focus {
+  border-color: var(--accent);
+}
+
 /* ── simulator ── */
 
 .sim-input {

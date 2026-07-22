@@ -1,18 +1,22 @@
 import { useRef, useState } from 'react'
-import { goalSchedule } from '../kernel/engine'
-import type { Goal } from '../kernel/types'
+import { describeScenario, goalSchedule } from '../kernel/engine'
+import type { Goal, Scenario } from '../kernel/types'
 import { dateReady, kr } from '../kernel/format'
 
 const ROW = 96 // card height + gap, for drag math
 
 export function Plans({
   goals,
+  scenarios,
   onReorder,
-  onSimulate,
+  onOpenScenario,
+  onNewScenario,
 }: {
   goals: Goal[]
+  scenarios: Scenario[]
   onReorder: (next: Goal[]) => void
-  onSimulate: () => void
+  onOpenScenario: (id: string) => void
+  onNewScenario: () => void
 }) {
   const plans = goalSchedule(goals)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -114,31 +118,37 @@ export function Plans({
 
       <div className="section">
         <span className="label">Scenarios — your Twin</span>
-        <div className="row">
-          <div>
-            <div className="name">Move to Oslo sentrum</div>
-            <div className="meta">rent +3,400 · Japan slips to June — saved world, always current</div>
+        {scenarios.length === 0 && (
+          <div className="meta" style={{ padding: '10px 0' }}>
+            No saved worlds yet. Try "what if I moved?" or "what if I lost my job?"
           </div>
-          <span className="meta">›</span>
-        </div>
-        <div className="row">
-          <div>
-            <div className="name">Drop to 80% hours</div>
-            <div className="meta">income −8,500 · all goals hold, buffer pace halves</div>
-          </div>
-          <span className="meta">›</span>
-        </div>
-        <div className="row">
-          <div>
-            <div className="name">If income stopped today</div>
-            <div className="meta">you’re okay for 4.9 months — until mid-December</div>
-          </div>
-          <span className="meta">›</span>
-        </div>
+        )}
+        {scenarios.map((s) => {
+          const { headline, detail } = describeScenario(goals, s)
+          return (
+            <div
+              className="row"
+              key={s.id}
+              onClick={() => onOpenScenario(s.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && onOpenScenario(s.id)}
+              style={{ cursor: 'pointer' }}
+            >
+              <div>
+                <div className="name">{s.name}</div>
+                <div className="meta">
+                  {headline} · {detail} — saved world, always current
+                </div>
+              </div>
+              <span className="meta">›</span>
+            </div>
+          )
+        })}
       </div>
 
       <div className="section">
-        <button className="btn" onClick={onSimulate}>
+        <button className="btn" onClick={onNewScenario}>
           ＋ New what-if
         </button>
       </div>
