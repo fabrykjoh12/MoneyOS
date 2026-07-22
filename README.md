@@ -39,6 +39,27 @@ The **Ledger** records reality. The **Kernel** projects it forward.
 **Pilot** turns projections into plain language and timely nudges.
 Every number in the app can explain itself, all the way down.
 
+## Run the prototype
+
+A working prototype of the app lives in this repo — the four screens (Today,
+Horizon, Plans, Money), the Pilot overlay, and a real deterministic Kernel
+(Safe-to-Spend with derivation sheets, a scrubbable 365-day Horizon
+projection, the purchase simulator with reservations, competing goals that
+re-date live when you drag them, subscription intelligence, Steady Score,
+and natural-language ledger search) running on a generated demo ledger of
+~7 months of Norwegian financial life.
+
+```bash
+npm install
+npm run dev      # open the printed URL — best viewed as a phone-sized window
+```
+
+React + TypeScript + Vite, zero UI dependencies — the Norra design system
+is hand-built in `src/styles.css`. The Kernel is pure TypeScript in
+`src/kernel/` and runs entirely client-side, exactly as the architecture
+doc prescribes. Light/dark themes (◐ in the header), discreet mode (◉),
+and the "tap any number to see why" gesture all work.
+
 ## Documentation
 
 | Doc | Contents |
