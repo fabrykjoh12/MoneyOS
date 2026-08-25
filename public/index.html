@@ -4,158 +4,137 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex,nofollow,noarchive" />
-  <meta name="theme-color" content="#f4f4f0" />
-  <title>MoneyOS — Private Finance</title>
+  <meta name="theme-color" content="#f7f8fa" />
+  <title>MoneyOS</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div id="login" class="login-shell hidden">
-    <form id="login-form" class="login-card">
-      <div class="brand-mark">M</div>
-      <p class="eyebrow">PRIVATE MONEYOS</p>
-      <h1>Økonomien din</h1>
-      <p class="muted">Én rolig oversikt over hva du kan gjøre nå, hva som kommer og hva Japan faktisk koster.</p>
+    <form id="login-form" class="login-panel">
+      <div class="logo-mark">M</div>
+      <div class="login-copy">
+        <p class="overline">PRIVATE MONEYOS</p>
+        <h1>Din økonomi, uten støy.</h1>
+        <p>Se hva du faktisk kan bruke, hva som kommer og hva livet ditt koster.</p>
+      </div>
       <label for="password">Passord</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required />
-      <button type="submit" class="primary">Åpne MoneyOS</button>
+      <button class="primary-button" type="submit">Åpne MoneyOS</button>
       <p id="login-error" class="error" aria-live="polite"></p>
     </form>
   </div>
 
-  <main id="app" class="app-shell hidden">
-    <aside class="sidebar">
-      <div class="side-brand"><div class="brand-dot">M</div><div><strong>MoneyOS</strong><span>Private</span></div></div>
-      <nav class="side-nav" aria-label="MoneyOS">
-        <button class="nav-item active" data-view="today"><span class="nav-icon">●</span><span>I dag</span></button>
-        <button class="nav-item" data-view="horizon"><span class="nav-icon">⌁</span><span>Fremover</span></button>
-        <button class="nav-item" data-view="plans"><span class="nav-icon">◇</span><span>Planer</span></button>
-        <button class="nav-item" data-view="money"><span class="nav-icon">▤</span><span>Penger</span></button>
+  <main id="app" class="shell hidden">
+    <aside class="rail">
+      <div class="rail-brand"><div class="logo-mark small">M</div><span>MoneyOS</span></div>
+      <nav class="rail-nav" aria-label="MoneyOS">
+        <button class="rail-item active" data-view="today"><span>◉</span><b>I dag</b></button>
+        <button class="rail-item" data-view="horizon"><span>⌁</span><b>Fremover</b></button>
+        <button class="rail-item" data-view="plans"><span>◇</span><b>Planer</b></button>
+        <button class="rail-item" data-view="money"><span>▤</span><b>Penger</b></button>
       </nav>
-      <div class="side-bottom">
-        <div id="data-chip" class="data-chip">Siste data —</div>
-        <button id="refresh" class="side-action">Oppdater</button>
-        <button id="logout" class="side-action">Logg ut</button>
+      <div class="rail-footer">
+        <div id="sync-chip" class="sync-chip">Data —</div>
+        <button id="refresh" class="quiet-button" type="button">Oppdater</button>
+        <button id="logout" class="quiet-button" type="button">Logg ut</button>
       </div>
     </aside>
 
-    <section class="workspace">
-      <header class="mobile-header">
-        <div class="side-brand"><div class="brand-dot">M</div><div><strong>MoneyOS</strong><span>Private</span></div></div>
-        <span id="as-of-mobile" class="date-chip"></span>
+    <section class="stage">
+      <header class="topbar">
+        <div>
+          <span id="section-kicker" class="topbar-kicker">I DAG</span>
+          <h1 id="section-title">Oversikt</h1>
+        </div>
+        <div class="topbar-right"><span id="as-of" class="as-of"></span><button id="theme-toggle" class="icon-button" type="button" aria-label="Bytt tema">◐</button></div>
       </header>
 
       <div id="freshness-banner" class="freshness-banner hidden"></div>
 
       <section class="view active" data-view-panel="today">
-        <header class="page-header">
-          <div><p class="eyebrow" id="today-date">I DAG</p><h1>Hva kan jeg trygt gjøre nå?</h1></div>
-          <span id="as-of" class="date-chip"></span>
-        </header>
-
-        <section class="today-grid">
-          <article class="safe-card card">
-            <div class="safe-top"><span class="label">Trygt å bruke</span><span id="safe-status" class="state-chip">Etter kjente trekk</span></div>
-            <button id="safe-button" class="safe-number-wrap" type="button" aria-label="Se hvorfor trygt å bruke er dette beløpet">
-              <strong id="safe-to-spend" class="safe-number">—</strong><span class="safe-currency">kr</span>
-            </button>
-            <p id="safe-caption" class="safe-caption">—</p>
-            <div class="safe-meta">
+        <div class="today-hero">
+          <div class="hero-copy">
+            <p class="section-label">Trygt å bruke</p>
+            <button id="safe-button" class="safe-button" type="button"><span id="safe-to-spend" class="safe-number">—</span><span class="safe-unit">kr</span></button>
+            <p id="safe-caption" class="hero-caption">—</p>
+            <div class="hero-facts">
               <div><span>I dag</span><strong id="daily-safe">—</strong></div>
-              <div><span>Til lønn</span><strong id="days-to-payday">—</strong></div>
+              <div><span>Dager til lønn</span><strong id="days-to-payday">—</strong></div>
               <div><span>Neste lønn</span><strong id="next-payday">—</strong></div>
             </div>
-            <button id="why-button" class="text-action" type="button">Se hvorfor dette tallet →</button>
-          </article>
+            <button id="why-button" class="inline-action" type="button">Hvorfor dette tallet <span>↗</span></button>
+          </div>
+          <div class="hero-next">
+            <div class="section-heading"><div><p class="section-label">Neste</p><h2>Kommende trekk</h2></div><button class="inline-action small" data-go="horizon">Se alle</button></div>
+            <div id="upcoming-list" class="clean-list"></div>
+          </div>
+        </div>
 
-          <article class="card brief-card">
-            <div class="card-head"><div><p class="eyebrow">STATUS</p><h2>Det viktigste akkurat nå</h2></div></div>
-            <div id="brief-list" class="brief-list"></div>
-          </article>
-        </section>
+        <div class="metric-row">
+          <div class="metric"><span>Likvid nå</span><strong id="liquid-balance">—</strong><small>uten BSU</small></div>
+          <div class="metric"><span>Kjent ut før lønn</span><strong id="committed-before-payday">—</strong><small id="committed-count">—</small></div>
+          <div class="metric"><span>Fast per måned</span><strong id="fixed-monthly">—</strong><small id="fixed-caption">—</small></div>
+          <div class="metric"><span>Månedsresultat</span><strong id="month-net">—</strong><small id="month-flow">—</small></div>
+        </div>
 
-        <section class="quick-grid">
-          <article class="mini-card"><span>Likvide penger</span><strong id="liquid-balance">—</strong><small>Ekskl. BSU</small></article>
-          <article class="mini-card"><span>Kjente trekk før lønn</span><strong id="committed-before-payday">—</strong><small id="committed-count">—</small></article>
-          <article class="mini-card"><span>Fast hver måned</span><strong id="fixed-monthly">—</strong><small id="fixed-caption">—</small></article>
-          <article class="mini-card"><span>Månedsresultat</span><strong id="month-net">—</strong><small id="month-flow">—</small></article>
-        </section>
-
-        <section class="two-col">
-          <article class="card section-card">
-            <div class="card-head"><div><p class="eyebrow">NESTE</p><h2>Kommende trekk</h2></div><button class="link-button" data-go="horizon">Se fremover</button></div>
-            <div id="upcoming-list" class="timeline"></div>
-          </article>
-          <article class="card section-card">
-            <div class="card-head"><div><p class="eyebrow">TEMPO</p><h2>Denne måneden</h2></div><span id="month-expenses" class="kpi">—</span></div>
-            <div id="month-pace" class="pace-block"></div>
+        <div class="today-lower">
+          <section class="surface spending-pulse">
+            <div class="section-heading"><div><p class="section-label">Denne måneden</p><h2>Forbrukspuls</h2></div><strong id="month-expenses" class="section-value">—</strong></div>
+            <div id="month-pace" class="pace"></div>
             <div id="top-spending" class="top-spending"></div>
-          </article>
-        </section>
+          </section>
+          <section class="surface cost-life">
+            <div class="section-heading"><div><p class="section-label">Cost of life</p><h2>Hva livet koster</h2></div></div>
+            <div class="cost-life-main"><strong id="cost-life-total">—</strong><span>/ måned i Japan</span></div>
+            <div class="cost-breakdown"><div><span>Levebudsjett</span><strong id="cost-living">—</strong></div><div><span>Faste trekk</span><strong id="cost-fixed">—</strong></div></div>
+            <button class="inline-action" data-go="plans">Se Japan-planen <span>↗</span></button>
+          </section>
+        </div>
       </section>
 
       <section class="view" data-view-panel="horizon">
-        <header class="page-header">
-          <div><p class="eyebrow">FREMOVER</p><h1>Hva er allerede på vei?</h1><p class="page-sub">Bare bekreftede og planlagte hendelser. Ukjent fremtidig lønn blir ikke gjettet.</p></div>
-          <div class="range-switch"><button class="range active" data-days="30">30d</button><button class="range" data-days="60">60d</button><button class="range" data-days="90">90d</button></div>
-        </header>
-
-        <article class="card horizon-card">
-          <div class="horizon-summary">
-            <div><span>Kjent ut</span><strong id="horizon-out">—</strong></div>
-            <div><span>Kjent inn</span><strong id="horizon-in">—</strong></div>
-            <div><span>Netto kjente hendelser</span><strong id="horizon-net">—</strong></div>
-          </div>
-          <div class="chart-shell">
-            <svg id="horizon-chart" viewBox="0 0 900 300" role="img" aria-label="Kjent kontantstrøm fremover"></svg>
-          </div>
-          <div id="horizon-note" class="horizon-note"></div>
-        </article>
-
-        <section class="two-col horizon-bottom">
-          <article class="card section-card"><div class="card-head"><div><p class="eyebrow">HENDELSER</p><h2>Tidslinje</h2></div></div><div id="horizon-events" class="event-stack"></div></article>
-          <article class="card section-card"><div class="card-head"><div><p class="eyebrow">FORKLARING</p><h2>Hva grafen faktisk betyr</h2></div></div><div class="explain-stack"><p><strong>Solid linje:</strong> utvikling fra dagens likvide snapshot når bare kjente hendelser legges til.</p><p><strong>Ikke med:</strong> fremtidig lønn med ukjent beløp, vanlig matforbruk og andre usikre kjøp.</p><p><strong>Poenget:</strong> se hvor store kjente forpliktelser som ligger foran deg uten falsk presisjon.</p></div></article>
-        </section>
+        <div class="page-intro"><div><p class="section-label">Fremover</p><h2>Se kjente forpliktelser før de treffer.</h2><p>Grafen bruker bare kjente og planlagte hendelser. Ukjent inntekt blir ikke gjettet.</p></div><div class="segmented"><button class="range active" data-days="30">30d</button><button class="range" data-days="60">60d</button><button class="range" data-days="90">90d</button></div></div>
+        <div class="horizon-stats"><div><span>Kjent ut</span><strong id="horizon-out">—</strong></div><div><span>Kjent inn</span><strong id="horizon-in">—</strong></div><div><span>Netto</span><strong id="horizon-net">—</strong></div></div>
+        <div class="horizon-visual"><svg id="horizon-chart" viewBox="0 0 1000 360" role="img" aria-label="Kontantstrøm fremover"></svg></div>
+        <div id="horizon-note" class="horizon-note"></div>
+        <div class="horizon-events-wrap"><div class="section-heading"><div><p class="section-label">Tidslinje</p><h2>Kjente hendelser</h2></div></div><div id="horizon-events" class="event-table"></div></div>
       </section>
 
       <section class="view" data-view-panel="plans">
-        <header class="page-header"><div><p class="eyebrow">PLANER</p><h1>Japan først</h1><p class="page-sub">Plan mot virkelighet, uten at abonnementer blandes inn i levebudsjettet.</p></div></header>
-        <article class="card japan-command">
-          <div><p class="eyebrow">JAPAN · SEPTEMBER</p><h2 id="japan-combined">—</h2><p>samlet månedlig base</p></div>
-          <div class="japan-command-grid"><div><span>Levebudsjett</span><strong id="japan-living">—</strong></div><div><span>Faste trekk</span><strong id="japan-fixed">—</strong></div><div><span>Teoretisk runway</span><strong id="japan-runway">—</strong></div></div>
-        </article>
-        <section class="two-col">
-          <article class="card section-card"><div class="card-head"><div><p class="eyebrow">BUDSJETT</p><h2>September</h2></div><span id="japan-budget-total" class="kpi">—</span></div><div id="japan-budget-list" class="budget-list"></div></article>
-          <article class="card section-card"><div class="card-head"><div><p class="eyebrow">NESTE FASE</p><h2>Når du lander</h2></div></div><div class="roadmap-list"><div><b>01</b><span><strong>JPY + NOK</strong><small>Originalbeløp i yen, NOK som regnskapsfasit.</small></span></div><div><b>02</b><span><strong>Cash + ICOCA</strong><small>Egne kontoer, overføringer teller ikke som forbruk.</small></span></div><div><b>03</b><span><strong>Spending pace</strong><small>Faktisk Japan-forbruk mot budsjettet uke for uke.</small></span></div></div></article>
-        </section>
+        <div class="page-intro"><div><p class="section-label">Planer</p><h2>Japan skal være lett å styre.</h2><p>Levekostnader, faste trekk og runway holdes adskilt, men ses sammen.</p></div></div>
+        <div class="japan-hero">
+          <div><span>Samlet base</span><strong id="japan-combined">—</strong><small>per måned</small></div>
+          <div class="japan-mini"><div><span>Levebudsjett</span><strong id="japan-living">—</strong></div><div><span>Faste trekk</span><strong id="japan-fixed">—</strong></div><div><span>Runway</span><strong id="japan-runway">—</strong></div></div>
+        </div>
+        <div class="plans-grid">
+          <section class="surface"><div class="section-heading"><div><p class="section-label">September</p><h2>Budsjett</h2></div><strong id="japan-budget-total" class="section-value">—</strong></div><div id="japan-budget-list" class="budget-list"></div></section>
+          <section class="surface"><div class="section-heading"><div><p class="section-label">Når du lander</p><h2>Japan Daily</h2></div></div><div class="roadmap"><div><b>01</b><span><strong>JPY + NOK</strong><small>Originalbeløp i yen, NOK som regnskapsfasit.</small></span></div><div><b>02</b><span><strong>Cash + ICOCA</strong><small>Flytting av penger er transfer, ikke forbruk.</small></span></div><div><b>03</b><span><strong>Dag / uke / måned</strong><small>Spending pace blir hovedsignalet i hverdagen.</small></span></div></div></section>
+        </div>
       </section>
 
       <section class="view" data-view-panel="money">
-        <header class="page-header"><div><p class="eyebrow">PENGER</p><h1>Hvor bor pengene?</h1><p class="page-sub">Kontoer, forbruk, abonnementer og aktivitet samlet.</p></div></header>
-        <section class="money-grid">
-          <article class="card section-card accounts-card"><div class="card-head"><div><p class="eyebrow">KONTOER</p><h2>Saldo</h2></div><span id="total-balance" class="kpi">—</span></div><div id="account-list" class="accounts"></div></article>
-          <article class="card section-card"><div class="card-head"><div><p class="eyebrow">FORBRUK</p><h2>Hvor pengene gikk</h2></div><span id="spending-total" class="kpi">—</span></div><div id="spending-list" class="spending-list"></div></article>
-          <article class="card section-card full"><div class="card-head"><div><p class="eyebrow">ABONNEMENTER</p><h2>Faste kostnader</h2></div><span id="fixed-total" class="kpi">—</span></div><div id="fixed-cost-list" class="subscriptions-grid"></div></article>
-          <article class="card section-card full"><div class="card-head"><div><p class="eyebrow">AKTIVITET</p><h2>Siste transaksjoner</h2></div></div><div id="transaction-list" class="transaction-list"></div></article>
-        </section>
-      </section>
+        <div class="page-intro money-intro"><div><p class="section-label">Penger</p><h2>Alt som faktisk har skjedd.</h2><p>Kontoer, forbruk, abonnementer og aktivitet — uten dashboard-støy.</p></div><div class="search-shell"><span>⌕</span><input id="money-search" type="search" placeholder="Søk i transaksjoner" /></div></div>
 
-      <footer><span>Database = fasit · Kernel = matematikk · ChatGPT = operatør</span><span>Read-only</span></footer>
+        <section class="money-summary">
+          <div><span>Total saldo</span><strong id="total-balance">—</strong></div>
+          <div><span>Forbruk denne måneden</span><strong id="spending-total">—</strong></div>
+          <div><span>Faste kostnader</span><strong id="fixed-total">—</strong></div>
+        </section>
+
+        <div class="money-layout">
+          <section class="surface accounts-surface"><div class="section-heading"><div><p class="section-label">Kontoer</p><h2>Hvor pengene bor</h2></div></div><div id="account-list" class="account-list"></div></section>
+          <section class="surface"><div class="section-heading"><div><p class="section-label">Kategorier</p><h2>Hvor pengene gikk</h2></div></div><div id="spending-list" class="spending-list"></div></section>
+        </div>
+
+        <section class="surface recurring-section"><div class="section-heading"><div><p class="section-label">Abonnementer</p><h2>Faste kostnader</h2></div><span class="section-hint">Måned + årskostnad</span></div><div id="fixed-cost-list" class="subscription-list"></div></section>
+        <section class="surface activity-section"><div class="section-heading"><div><p class="section-label">Aktivitet</p><h2>Siste transaksjoner</h2></div><span id="transaction-count" class="section-hint"></span></div><div id="transaction-list" class="transaction-list"></div></section>
+      </section>
     </section>
 
-    <nav class="mobile-nav" aria-label="Mobilnavigasjon">
-      <button class="mobile-item active" data-view="today">I dag</button><button class="mobile-item" data-view="horizon">Fremover</button><button class="mobile-item" data-view="plans">Planer</button><button class="mobile-item" data-view="money">Penger</button>
-    </nav>
+    <nav class="mobile-nav" aria-label="Mobilnavigasjon"><button class="mobile-item active" data-view="today">I dag</button><button class="mobile-item" data-view="horizon">Fremover</button><button class="mobile-item" data-view="plans">Planer</button><button class="mobile-item" data-view="money">Penger</button></nav>
   </main>
 
-  <div id="why-sheet" class="sheet-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="why-title">
-    <section class="sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-head"><div><p class="eyebrow">KERNEL ✓</p><h2 id="why-title">Hvorfor dette tallet?</h2></div><button id="close-why" class="close-button" aria-label="Lukk">×</button></div>
-      <div class="derivation-total"><span>Trygt å bruke</span><strong id="why-safe">—</strong></div>
-      <div id="derivation-list" class="derivation-list"></div>
-      <p class="sheet-note">Dette er den samme matematikken som databasen bruker. Ingen av beløpene genereres av AI.</p>
-    </section>
-  </div>
+  <div id="why-sheet" class="sheet-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="why-title"><section class="sheet"><div class="sheet-bar"></div><div class="sheet-head"><div><p class="section-label">KERNEL ✓</p><h2 id="why-title">Hvorfor dette tallet?</h2></div><button id="close-why" class="sheet-close" type="button" aria-label="Lukk">×</button></div><div class="sheet-total"><span>Trygt å bruke</span><strong id="why-safe">—</strong></div><div id="derivation-list" class="derivation-list"></div><p class="sheet-note">Samme matematikk som i Finance-databasen. AI skriver ikke beløpene.</p></section></div>
 
   <div id="loading" class="loading">Henter økonomien…</div>
   <script type="module" src="/app.js"></script>
