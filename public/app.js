@@ -60,7 +60,9 @@ function render(data) {
   $('fixed-monthly').textContent = formatMoney(c.fixed_monthly_total);
   $('fixed-caption').textContent = `${fixed.length} bekreftede trekk`;
   $('month-expenses').textContent = formatMoney(o.month_expenses);
-  $('month-expense-caption').textContent = categories.length ? `${categories.length} kategorier · bokført` : 'Ingen bokførte kjøp';
+  $('month-expense-caption').textContent = Number(c.typical_core_month ?? 0) > 0
+    ? `Typisk personlig måned ${formatMoney(c.typical_core_month)} · ekskl. bolig/delte utgifter`
+    : (categories.length ? `${categories.length} kategorier · bokført` : 'Ingen bokførte kjøp');
   $('month-net').textContent = signedMoney(o.month_net);
   $('month-net').className = `metric-value ${classFor(o.month_net)}`;
   $('month-flow').textContent = `${formatMoney(o.month_income)} inn · ${formatMoney(o.month_expenses)} ut`;
@@ -159,10 +161,11 @@ function renderMonthInsight(o, c) {
   const root = $('month-insight');
   const pending = Number(c.pending_expenses ?? 0);
   const net = Number(o.month_net ?? 0);
+  const typical = Number(c.typical_core_month ?? 0);
   if (pending > 0) {
-    root.innerHTML = `<strong>${formatMoney(pending)} er fortsatt pending</strong><span>Det vises separat for å unngå at reserverte kjøp blir dobbeltregnet som bokførte utgifter.</span>`;
+    root.innerHTML = `<strong>${formatMoney(pending)} er fortsatt pending</strong><span>Det vises separat for å unngå dobbeltelling.${typical > 0 ? ` Typisk personlig måned før Japan: ${formatMoney(typical)} ekskl. bolig og delte utgifter.` : ''}</span>`;
   } else {
-    root.innerHTML = `<strong>${signedMoney(net)} hittil denne måneden</strong><span>Interne kontooverføringer holdes utenfor vanlig forbruk.</span>`;
+    root.innerHTML = `<strong>${signedMoney(net)} hittil denne måneden</strong><span>Interne kontooverføringer holdes utenfor vanlig forbruk.${typical > 0 ? ` Typisk personlig måned før Japan: ${formatMoney(typical)}.` : ''}</span>`;
   }
 }
 
@@ -173,7 +176,7 @@ function renderReviewCandidates(items, inactiveNote) {
   root.innerHTML = `${rows}${inactiveNote ? `<div class="review-note">${escapeHtml(inactiveNote)}</div>` : ''}`;
 }
 
-function renderFixedCosts(items) {
+function renderFixedCosts(items, total) {
   const root = $('fixed-cost-list');
   if (!items.length) { root.className = 'fixed-cost-list empty-state'; root.textContent = 'Ingen bekreftede faste kostnader.'; return; }
   root.className = 'fixed-cost-list';
