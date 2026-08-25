@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
+  <meta name="theme-color" content="#f5f5f2" />
+  <title>Finance — Japan</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="login" class="login-shell hidden">
+    <form id="login-form" class="login-card">
+      <div class="brand-mark">F</div>
+      <p class="eyebrow">PRIVATE FINANCE</p>
+      <h1>Økonomien din</h1>
+      <p class="muted">Privat oversikt over penger, budsjett og Japan-opphold.</p>
+      <label for="password">Passord</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit" class="primary">Åpne Finance</button>
+      <p id="login-error" class="error" aria-live="polite"></p>
+    </form>
+  </div>
+
+  <main id="app" class="app-shell hidden">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-dot">F</div>
+        <div><p class="eyebrow">FINANCE</p><h1>Money command center</h1></div>
+      </div>
+      <div class="topbar-actions">
+        <span id="as-of" class="date-pill"></span>
+        <button id="refresh" class="ghost" type="button">Oppdater</button>
+        <button id="logout" class="ghost" type="button">Logg ut</button>
+      </div>
+    </header>
+
+    <div id="freshness-banner" class="freshness-banner hidden"></div>
+
+    <nav class="view-tabs" aria-label="Finansoversikt">
+      <button class="view-tab active" data-view="overview">Oversikt</button>
+      <button class="view-tab" data-view="spending">Forbruk</button>
+      <button class="view-tab" data-view="fixed">Faste kostnader</button>
+      <button class="view-tab" data-view="japan">Japan</button>
+    </nav>
+
+    <section class="view active" data-view-panel="overview">
+      <section class="overview-hero">
+        <article class="card command-card">
+          <div class="command-top"><div><p class="label">Trygt å bruke nå</p><div id="safe-to-spend" class="hero-value">—</div></div><span id="safe-status" class="status-pill">Planlagt</span></div>
+          <p id="safe-caption" class="muted hero-copy">—</p>
+          <div class="hero-progress"><span id="safe-progress"></span></div>
+          <div class="hero-mini-grid">
+            <div><span class="mini-label">Per dag</span><strong id="daily-safe">—</strong></div>
+            <div><span class="mini-label">Neste lønn</span><strong id="next-payday">—</strong></div>
+            <div><span class="mini-label">Kommende før lønn</span><strong id="committed-before-payday">—</strong></div>
+            <div><span class="mini-label">Buffer</span><strong id="buffer-target">—</strong></div>
+          </div>
+        </article>
+
+        <div class="metric-grid">
+          <article class="card metric-card"><p class="label">Likvide penger</p><strong id="liquid-balance" class="metric-value">—</strong><p class="muted">Uten BSU / sparekonto</p></article>
+          <article class="card metric-card"><p class="label">Fast hver måned</p><strong id="fixed-monthly" class="metric-value">—</strong><p id="fixed-caption" class="muted">Bekreftet</p></article>
+          <article class="card metric-card"><p class="label">Brukt i august</p><strong id="month-expenses" class="metric-value">—</strong><p id="month-expense-caption" class="muted">—</p></article>
+          <article class="card metric-card"><p class="label">Månedsresultat</p><strong id="month-net" class="metric-value">—</strong><p id="month-flow" class="muted">—</p></article>
+        </div>
+      </section>
+
+      <section class="content-grid compact-top">
+        <article class="card section-card span-7">
+          <div class="section-heading"><div><p class="eyebrow">DENNE MÅNEDEN</p><h2>Hvor pengene gikk</h2></div><span id="spending-total" class="section-kpi">—</span></div>
+          <div id="spending-list" class="spending-list empty-state">Ingen utgifter.</div>
+        </article>
+        <article class="card section-card span-5">
+          <div class="section-heading"><div><p class="eyebrow">KOMMENDE</p><h2>Neste trekk</h2></div><span class="muted">30 dager</span></div>
+          <div id="upcoming-list" class="timeline empty-state">Ingen kommende poster.</div>
+        </article>
+        <article class="card section-card span-7">
+          <div class="section-heading"><div><p class="eyebrow">UTVIKLING</p><h2>Månedlig forbruk</h2></div><span id="trend-caption" class="section-kpi">—</span></div>
+          <div id="history-chart" class="history-chart"></div>
+        </article>
+        <article class="card section-card span-5">
+          <div class="section-heading"><div><p class="eyebrow">KONTOER</p><h2>Saldo</h2></div><span id="total-balance" class="section-kpi">—</span></div>
+          <div id="account-list" class="accounts empty-state">Ingen kontoer.</div>
+        </article>
+      </section>
+    </section>
+
+    <section class="view" data-view-panel="spending">
+      <section class="view-header"><div><p class="eyebrow">FORBRUK</p><h2>Se mønsteret, ikke bare saldoen</h2></div><p class="muted">Kategorier, utvikling og transaksjoner på ett sted.</p></section>
+      <section class="content-grid">
+        <article class="card section-card span-7"><div class="section-heading"><div><h2>Kategorier</h2><p class="muted small-gap">Bokført denne måneden</p></div><span id="spending-total-2" class="section-kpi">—</span></div><div id="spending-list-2" class="spending-list"></div></article>
+        <article class="card section-card span-5"><div class="section-heading"><div><h2>Kontantstrøm</h2><p class="muted small-gap">Måned til dato</p></div></div><div class="month-summary-grid"><div class="summary-tile"><span>Inntekter</span><strong id="summary-income">—</strong></div><div class="summary-tile"><span>Utgifter</span><strong id="summary-expenses">—</strong></div><div class="summary-tile"><span>Pending</span><strong id="pending-expenses">—</strong></div><div class="summary-tile"><span>Netto</span><strong id="summary-net">—</strong></div></div><div id="month-insight" class="insight-box">—</div></article>
+        <article class="card section-card span-12"><div class="section-heading"><div><h2>Historikk</h2><p class="muted small-gap">Siste måneder</p></div></div><div id="history-chart-2" class="history-chart large"></div></article>
+        <article class="card section-card span-12"><div class="section-heading"><div><h2>Siste transaksjoner</h2><p class="muted small-gap">Interne overføringer holdes utenfor forbruk</p></div></div><div id="transaction-list" class="transaction-list empty-state">Ingen transaksjoner.</div></article>
+      </section>
+    </section>
+
+    <section class="view" data-view-panel="fixed">
+      <section class="view-header"><div><p class="eyebrow">FASTE KOSTNADER</p><h2>Det som følger deg hver måned</h2></div><div class="view-kpi"><span>Normalisert / mnd</span><strong id="fixed-total">—</strong></div></section>
+      <section class="content-grid">
+        <article class="card section-card span-8"><div class="section-heading"><div><h2>Bekreftede trekk</h2><p class="muted small-gap">Basert på gjentatte banktrekk og dokumenterte avtaler</p></div></div><div id="fixed-cost-list" class="fixed-cost-list"></div></article>
+        <article class="card section-card span-4"><div class="section-heading"><div><h2>Hva jeg følger med på</h2></div></div><div id="review-candidates" class="review-stack"></div></article>
+        <article class="card section-card span-12"><div class="section-heading"><div><h2>Årseffekt</h2><p class="muted small-gap">Hva de bekreftede faste kostnadene betyr over tid</p></div></div><div class="annual-strip"><div><span>Per måned</span><strong id="annual-monthly">—</strong></div><div><span>5 måneder i Japan</span><strong id="annual-japan">—</strong></div><div><span>12 måneder</span><strong id="annual-year">—</strong></div></div></article>
+      </section>
+    </section>
+
+    <section class="view" data-view-panel="japan">
+      <section class="japan-hero card">
+        <div><p class="eyebrow">JAPAN · SEP 2026</p><h2>Utvekslingsbudsjettet</h2><p class="muted japan-copy">Planlagt levekostnad i Japan + kostnader som fortsatt følger deg fra Norge.</p></div>
+        <div class="japan-total"><span>Base per måned</span><strong id="japan-combined">—</strong></div>
+      </section>
+      <section class="japan-metrics">
+        <article class="card metric-card"><p class="label">Japan levebudsjett</p><strong id="japan-living" class="metric-value">—</strong><p class="muted">September-plan</p></article>
+        <article class="card metric-card"><p class="label">Faste trekk</p><strong id="japan-fixed" class="metric-value">—</strong><p class="muted">Bekreftet / normalisert</p></article>
+        <article class="card metric-card"><p class="label">Likvide penger nå</p><strong id="japan-liquid" class="metric-value">—</strong><p class="muted">Ekskl. BSU</p></article>
+        <article class="card metric-card"><p class="label">Teoretisk runway</p><strong id="japan-runway" class="metric-value">—</strong><p class="muted">Før engangskostnader</p></article>
+      </section>
+      <section class="content-grid">
+        <article class="card section-card span-7"><div class="section-heading"><div><p class="eyebrow">SEPTEMBER</p><h2>Budsjett per kategori</h2></div><span id="japan-budget-total" class="section-kpi">—</span></div><div id="japan-budget-list" class="budget-list"></div></article>
+        <article class="card section-card span-5"><div class="section-heading"><div><p class="eyebrow">FØRSTE TREKK</p><h2>Hva som kommer</h2></div></div><div id="japan-upcoming" class="timeline"></div></article>
+        <article class="card section-card span-12"><div class="section-heading"><div><h2>Hvordan vi bruker dette i Japan</h2></div></div><div class="japan-rules"><div><span>01</span><strong>Yen inn, NOK som fasit</strong><p>Når JPY-støtten kommer lagrer vi originalbeløpet i yen og NOK-verdien separat.</p></div><div><span>02</span><strong>Fast ≠ vanlig forbruk</strong><p>Abonnementer holdes separat fra det du faktisk bruker på mat, transport og sosialt.</p></div><div><span>03</span><strong>Plan mot faktisk</strong><p>Fra 7. september sammenligner dashboardet Japan-budsjettet med reelle kjøp.</p></div></div></article>
+      </section>
+    </section>
+
+    <footer><span>Database = fasit · ChatGPT = operatør · Dashboard = visning</span><span>Read-only</span></footer>
+  </main>
+
+  <div id="loading" class="loading">Henter økonomien…</div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
