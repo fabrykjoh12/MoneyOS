@@ -80,6 +80,19 @@ export default async function handler(req, res) {
         COALESCE((SELECT json_agg(row_to_json(r) ORDER BY r.monthly_amount DESC, r.name) FROM recurring_normalized r), '[]'::json) AS fixed_costs,
         COALESCE((SELECT ROUND(SUM(monthly_amount)::numeric, 2) FROM recurring_normalized), 0) AS fixed_monthly_total,
         COALESCE((
+          SELECT ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY core_spend)::numeric, 2)
+          FROM (
+            SELECT
+              (value->>'expense_total')::numeric
+              - COALESCE((value->'expenses'->>'Refusjoner og delte utgifter')::numeric, 0)
+              - COALESCE((value->'expenses'->>'Bolig')::numeric, 0) AS core_spend
+            FROM history_document
+            CROSS JOIN LATERAL jsonb_each(extracted_summary->'monthly')
+            WHERE key < to_char(date_trunc('month', CURRENT_DATE), 'YYYY-MM')
+              AND key >= to_char(date_trunc('month', CURRENT_DATE) - interval '6 months', 'YYYY-MM')
+          ) core_months
+        ), 0) AS typical_core_month,
+        COALESCE((
           SELECT ROUND(SUM(v.budget_amount)::numeric, 2)
           FROM v_budget_status v
           WHERE CURRENT_DATE BETWEEN v.period_start AND v.period_end
@@ -128,6 +141,7 @@ export default async function handler(req, res) {
     payload.next_budget = row.next_budget ?? [];
     payload.cost_summary = {
       fixed_monthly_total: Number(row.fixed_monthly_total ?? 0),
+      typical_core_month: Number(row.typical_core_month ?? 0),
       budget_total: Number(row.budget_total ?? 0),
       budget_spent: Number(row.budget_spent ?? 0),
       budget_remaining: Number(row.budget_remaining ?? 0),
