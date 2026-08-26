@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex,nofollow,noarchive" />
-  <meta name="theme-color" content="#fbfbfa" />
+  <meta name="theme-color" content="#f7f7f5" />
   <title>MoneyOS</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -12,8 +12,8 @@
   <div id="login" class="login-shell hidden">
     <form id="login-form" class="login-panel">
       <div class="wordmark">MoneyOS</div>
-      <h1>Privat økonomi.</h1>
-      <p>Logg inn for å se oversikten.</p>
+      <h1>Privat økonomi</h1>
+      <p>Logg inn for å fortsette.</p>
       <label for="password">Passord</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required />
       <button type="submit">Fortsett</button>
@@ -23,56 +23,68 @@
 
   <main id="app" class="app hidden">
     <header class="appbar">
-      <div class="wordmark">MoneyOS</div>
-      <nav class="main-nav" aria-label="MoneyOS">
-        <button class="nav active" data-view="today">I dag</button>
-        <button class="nav" data-view="horizon">Fremover</button>
-        <button class="nav" data-view="plans">Planer</button>
-        <button class="nav" data-view="money">Penger</button>
-      </nav>
-      <div class="appbar-actions">
-        <span id="sync-chip" class="sync-chip">—</span>
-        <button id="refresh" class="text-button" type="button">Oppdater</button>
-        <button id="logout" class="text-button" type="button">Logg ut</button>
+      <div class="appbar-inner">
+        <div class="wordmark">MoneyOS</div>
+        <nav class="main-nav" aria-label="MoneyOS">
+          <button class="nav active" data-view="today">I dag</button>
+          <button class="nav" data-view="horizon">Fremover</button>
+          <button class="nav" data-view="plans">Planer</button>
+          <button class="nav" data-view="money">Penger</button>
+        </nav>
+        <div class="appbar-actions">
+          <span id="sync-chip" class="sync-chip">—</span>
+          <button id="refresh" class="text-button" type="button">Oppdater</button>
+          <button id="logout" class="text-button" type="button">Logg ut</button>
+        </div>
       </div>
     </header>
 
     <div id="freshness-banner" class="freshness hidden"></div>
 
     <section class="view active" data-view-panel="today">
-      <div class="page page-narrow">
-        <header class="page-head">
-          <p id="today-date" class="date-line"></p>
+      <div class="page today-page">
+        <header class="today-head">
+          <p id="today-date" class="today-date"></p>
         </header>
 
-        <section class="safe-section">
-          <p class="quiet-label">Trygt å bruke</p>
+        <section class="hero-balance">
+          <p class="hero-label">Trygt å bruke</p>
           <button id="safe-button" class="safe-button" type="button" aria-label="Forklar trygt å bruke">
             <span id="safe-to-spend" class="safe-number">—</span><span class="safe-unit">kr</span>
           </button>
           <p id="safe-caption" class="safe-caption">—</p>
-          <button id="why-button" class="explain-link" type="button">Slik er tallet regnet ut</button>
+          <div class="hero-meta" aria-label="Kort status">
+            <span><strong id="daily-safe">—</strong> per dag</span>
+            <span><strong id="days-to-payday">—</strong> til lønn</span>
+            <span><strong id="next-payday">—</strong> neste lønn</span>
+          </div>
+          <button id="why-button" class="quiet-action" type="button">Hvordan regnes dette?</button>
         </section>
 
-        <section class="facts-line" aria-label="Kort status">
-          <div><span>I dag</span><strong id="daily-safe">—</strong></div>
-          <div><span>Til lønn</span><strong id="days-to-payday">—</strong></div>
-          <div><span>Neste lønn</span><strong id="next-payday">—</strong></div>
-        </section>
-
-        <section class="plain-section">
-          <div class="section-title-row"><h2>Neste</h2><button class="link-button" data-go="horizon" type="button">Se fremover</button></div>
+        <section class="today-section">
+          <div class="section-title-row">
+            <h2>Neste trekk</h2>
+            <button class="link-button" data-go="horizon" type="button">Fremover</button>
+          </div>
           <div id="upcoming-list" class="plain-list"></div>
         </section>
 
-        <section class="plain-section">
-          <div class="section-title-row"><h2>Denne måneden</h2><strong id="month-expenses" class="inline-value">—</strong></div>
-          <div id="month-pace" class="month-pace"></div>
-          <div id="top-spending" class="category-compact"></div>
+        <section class="today-section month-summary">
+          <div>
+            <p class="section-label">Denne måneden</p>
+            <strong id="month-expenses" class="month-number">—</strong>
+            <p class="section-note">Bokførte utgifter hittil.</p>
+            <div id="month-pace" class="hidden"></div><div id="top-spending" class="hidden"></div>
+          </div>
+          <button class="link-button" data-go="money" type="button">Se transaksjoner</button>
         </section>
 
-        <section class="japan-line">
-          <div><span>Japan-base</span><strong id="japan-combined">—</strong></div>
+        <section class="today-section japan-summary">
+          <div>
+            <p class="section-label">Japan</p>
+            <strong id="japan-combined" class="japan-number">—</strong>
+            <p class="section-note">Planlagt grunnkostnad per måned.</p>
+          </div>
           <button class="link-button" data-go="plans" type="button">Se planen</button>
         </section>
       </div>
@@ -81,7 +93,7 @@
     <section class="view" data-view-panel="horizon">
       <div class="page page-wide">
         <header class="page-head split">
-          <div><p class="date-line">Fremover</p><h1>Kjente forpliktelser.</h1><p class="intro">Bare det vi faktisk vet om. Ukjent fremtidig lønn og vanlig hverdagsforbruk blir ikke gjettet.</p></div>
+          <div><p class="page-kicker">Fremover</p><h1>Kjente forpliktelser</h1><p class="intro">Bare det vi faktisk vet om. Ukjent fremtidig lønn og vanlig hverdagsforbruk blir ikke gjettet.</p></div>
           <div class="segmented"><button class="range active" data-days="30">30 dager</button><button class="range" data-days="60">60</button><button class="range" data-days="90">90</button></div>
         </header>
         <div class="horizon-summary"><div><span>Kjent ut</span><strong id="horizon-out">—</strong></div><div><span>Kjent inn</span><strong id="horizon-in">—</strong></div><div><span>Netto</span><strong id="horizon-net">—</strong></div></div>
@@ -93,7 +105,7 @@
 
     <section class="view" data-view-panel="plans">
       <div class="page page-narrow">
-        <header class="page-head"><p class="date-line">Planer</p><h1>Japan.</h1><p class="intro">Hva oppholdet krever per måned, og hvordan budsjettet er fordelt.</p></header>
+        <header class="page-head"><p class="page-kicker">Planer</p><h1>Japan</h1><p class="intro">Hva oppholdet krever per måned, og hvordan budsjettet er fordelt.</p></header>
         <section class="plan-hero"><span>Samlet base per måned</span><strong id="plan-combined">—</strong><div class="plan-meta"><div><span>Levebudsjett</span><b id="japan-living">—</b></div><div><span>Faste trekk</span><b id="japan-fixed">—</b></div><div><span>Runway</span><b id="japan-runway">—</b></div></div></section>
         <section class="plain-section"><div class="section-title-row"><h2>September</h2><strong id="japan-budget-total" class="inline-value">—</strong></div><div id="japan-budget-list" class="budget-list"></div></section>
       </div>
@@ -101,7 +113,7 @@
 
     <section class="view" data-view-panel="money">
       <div class="page page-wide">
-        <header class="page-head split"><div><p class="date-line">Penger</p><h1>Kontoer og aktivitet.</h1></div><div class="search-box"><input id="money-search" type="search" placeholder="Søk i transaksjoner" /></div></header>
+        <header class="page-head split"><div><p class="page-kicker">Penger</p><h1>Kontoer og aktivitet</h1></div><div class="search-box"><input id="money-search" type="search" placeholder="Søk i transaksjoner" /></div></header>
         <div class="money-totals"><div><span>Total saldo</span><strong id="total-balance">—</strong></div><div><span>Brukt denne måneden</span><strong id="spending-total">—</strong></div><div><span>Fast per måned</span><strong id="fixed-total">—</strong></div></div>
         <section class="plain-section"><h2>Kontoer</h2><div id="account-list" class="account-list"></div></section>
         <section class="plain-section"><h2>Faste kostnader</h2><div id="fixed-cost-list" class="subscription-list"></div></section>
@@ -119,7 +131,7 @@
 
   <div id="why-sheet" class="sheet-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="why-title">
     <section class="sheet">
-      <div class="sheet-head"><div><p class="quiet-label">Forklaring</p><h2 id="why-title">Trygt å bruke</h2></div><button id="close-why" class="close-button" type="button">Lukk</button></div>
+      <div class="sheet-head"><div><p class="page-kicker">Forklaring</p><h2 id="why-title">Trygt å bruke</h2></div><button id="close-why" class="close-button" type="button">Lukk</button></div>
       <div id="why-safe" class="sheet-total">—</div>
       <div id="derivation-list" class="derivation-list"></div>
       <p class="sheet-note">Tallene kommer fra Finance-databasen. AI beregner ikke beløpet.</p>
