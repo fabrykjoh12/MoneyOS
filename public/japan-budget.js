@@ -1,0 +1,225 @@
+const jbMoney0 = new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 });
+const jbMoney2 = new Intl.NumberFormat('nb-NO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const jbMonth = new Intl.DateTimeFormat('nb-NO', { month: 'long', year: 'numeric' });
+const jbDate = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' });
+let jbSelectedMonth = '2026-09';
+let jbData = null;
+let jbLoading = false;
+
+function jbN(v){ return Number(v ?? 0); }
+function jbKr(v, precise=false){ return `${(precise ? jbMoney2 : jbMoney0).format(jbN(v))} kr`; }
+function jbYen(v){ return `¥${jbMoney0.format(jbN(v))}`; }
+function jbEsc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function jbParse(v){ if(!v) return null; return new Date(`${String(v).slice(0,10)}T12:00:00`); }
+function jbMonthKey(date){ return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`; }
+function jbMonthDate(key){ const [y,m]=key.split('-').map(Number); return new Date(y,m-1,1,12,0,0); }
+function jbAddMonths(date,count){ return new Date(date.getFullYear(),date.getMonth()+count,date.getDate(),12,0,0); }
+function jbDiffMonths(a,b){ return (b.getFullYear()-a.getFullYear())*12 + (b.getMonth()-a.getMonth()); }
+function jbTitle(s){ return s ? s[0].toUpperCase()+s.slice(1) : s; }
+
+function jbEnsure(){
+  const shell=document.querySelector('[data-view-panel="plans"] .japan-shell');
+  if(!shell || document.getElementById('japan-budget-v2')) return !!shell;
+  const header=shell.querySelector('.japan-heading');
+  if(header){
+    const h=header.querySelector('h1'); if(h) h.textContent='Japan-budsjett';
+    const k=header.querySelector('.page-kicker'); if(k) k.textContent='SEPTEMBER 2026 – JANUAR 2027';
+  }
+  const root=document.createElement('div');
+  root.id='japan-budget-v2';
+  root.className='jb-root';
+  root.innerHTML=`
+    <section class="jb-overview">
+      <div class="jb-overview-copy">
+        <p class="panel-kicker">BASEPLAN · UTEN FREMTIDIG INNTEKT</p>
+        <h2><span id="jb-remaining">—</span> igjen etter planen</h2>
+        <p id="jb-remaining-copy">—</p>
+      </div>
+      <div class="jb-overview-stats">
+        <div><span>Tilgjengelig nå, uten BSU</span><strong id="jb-funds">—</strong></div>
+        <div><span>Japan Sep–Jan</span><strong id="jb-japan-total">—</strong><small id="jb-japan-nok">—</small></div>
+        <div><span>Norske faste trekk Sep–Jan</span><strong id="jb-norway-total">—</strong></div>
+        <div><span>Mangler pris</span><strong id="jb-unpriced-count">—</strong><small>ikke med i restbeløpet</small></div>
+      </div>
+    </section>
+
+    <section class="jb-normal-month">
+      <div class="jb-normal-copy">
+        <p class="panel-kicker">EN VANLIG MÅNED</p>
+        <h2><span id="jb-normal-total">—</span> i Japan</h2>
+        <p>Dette er selve Japan-budsjettet. Norske abonnementer og forsikring ligger separat.</p>
+      </div>
+      <div class="jb-normal-breakdown">
+        <div><span>Bekreftet dorm</span><strong id="jb-dorm">—</strong><small>Kansai University</small></div>
+        <div><span>Nødvendig hverdagsbudsjett</span><strong id="jb-essential">—</strong><small>mat, transport, mobil, helse m.m.</small></div>
+        <div class="jb-free"><span>Fri / fleksibel pott</span><strong id="jb-flex">—</strong><small id="jb-flex-detail">—</small></div>
+      </div>
+    </section>
+
+    <section class="jb-ledger">
+      <div class="jb-section-head">
+        <div><p class="panel-kicker">MÅNED FOR MÅNED</p><h2>Hva er satt av når?</h2><p>Trykk på en måned for å se alle poster.</p></div>
+        <div class="jb-rate"><span>Planleggingskurs</span><strong id="jb-rate">—</strong><small id="jb-rate-date">—</small></div>
+      </div>
+      <div id="jb-month-strip" class="jb-month-strip"></div>
+      <div id="jb-month-detail" class="jb-month-detail"></div>
+    </section>
+
+    <section class="jb-bottom-grid">
+      <article class="jb-category-ledger">
+        <div class="jb-section-head"><div><p class="panel-kicker">HVERDAGSPOTTENE</p><h2>Eksakt fordeling av budsjettet</h2><p>Disse er rammer du styrer etter, ikke påståtte faktiske kostnader.</p></div></div>
+        <div id="jb-category-list" class="jb-lines"></div>
+      </article>
+      <article class="jb-unpriced">
+        <div class="jb-section-head"><div><p class="panel-kicker">IKKE FERDIG PRISSATT</p><h2>Dette mangler før totalen er endelig</h2><p>MoneyOS legger dem ikke inn i totalen før beløpet er kjent.</p></div></div>
+        <div id="jb-unpriced-list" class="jb-unpriced-list"></div>
+      </article>
+    </section>
+
+    <p class="jb-method">Bekreftet = faktisk kjent kostnad. Budsjett = beløpet vi setter av. Depositum = låst kapital, ikke ekstra forbruk; det brukes mot siste dormmåned dersom alt er oppgjort.</p>`;
+  header?.insertAdjacentElement('afterend',root);
+  return true;
+}
+
+function jbMonths(config){
+  const start=jbParse(config.period_start), end=jbParse(config.period_end);
+  if(!start||!end) return [];
+  const out=[]; let d=new Date(start);
+  while(d<=end){ out.push(jbMonthKey(d)); d=new Date(d.getFullYear(),d.getMonth()+1,1,12,0,0); }
+  return out;
+}
+
+function jbRecurringForMonth(items,key){
+  const target=jbMonthDate(key);
+  return (items??[]).map(item=>{
+    const due=jbParse(item.next_due_date); if(!due) return null;
+    const diff=jbDiffMonths(new Date(due.getFullYear(),due.getMonth(),1,12),target);
+    if(diff<0) return null;
+    let matches=false;
+    if(item.cadence==='monthly') matches=true;
+    else if(item.cadence==='quarterly') matches=diff%3===0;
+    else if(item.cadence==='yearly') matches=diff%12===0;
+    else return null;
+    if(!matches) return null;
+    const day=Math.min(due.getDate(),new Date(target.getFullYear(),target.getMonth()+1,0).getDate());
+    return {...item, due_date:new Date(target.getFullYear(),target.getMonth(),day,12,0,0), cash_amount:jbN(item.amount)};
+  }).filter(Boolean).sort((a,b)=>a.due_date-b.due_date);
+}
+
+function jbBuildModel(d){
+  const j=d.japan_plan??{}, cfg=j.budget??{};
+  const rate=jbN(cfg.planning_rate?.jpy_nok);
+  const cats=cfg.living_categories??[];
+  const living=cats.reduce((s,x)=>s+jbN(x.amount_jpy),0);
+  const essential=cats.filter(x=>x.kind==='essential').reduce((s,x)=>s+jbN(x.amount_jpy),0);
+  const flexible=cats.filter(x=>x.kind==='flexible').reduce((s,x)=>s+jbN(x.amount_jpy),0);
+  const dorm=jbN(cfg.known_jpy?.dorm_monthly || j.dorm_monthly_jpy);
+  const entrance=jbN(cfg.known_jpy?.entrance_fee || j.move_in_fee_jpy);
+  const deposit=jbN(cfg.known_jpy?.deposit || j.deposit_jpy);
+  const months=jbMonths(cfg);
+  const monthRows=months.map((key,i)=>{
+    const recurring=jbRecurringForMonth(d.fixed_costs,key);
+    const recurringNok=recurring.reduce((s,x)=>s+x.cash_amount,0);
+    const isFirst=i===0, isLast=i===months.length-1;
+    const japanCash=living + (isLast?0:dorm) + (isFirst?entrance+deposit:0);
+    const economic=living+dorm+(isFirst?entrance:0);
+    return {key,recurring,recurringNok,isFirst,isLast,japanCash,economic};
+  });
+  const japanCashTotal=monthRows.reduce((s,x)=>s+x.japanCash,0);
+  const recurringTotal=monthRows.reduce((s,x)=>s+x.recurringNok,0);
+  const arrival=jbParse(j.arrival_date);
+  const beforeArrival=(d.upcoming??[]).filter(x=>x.event_type!=='income' && jbParse(x.event_date) && arrival && jbParse(x.event_date)<arrival).reduce((s,x)=>s+jbN(x.amount),0);
+  const funds=jbN(d.cost_summary?.liquid_non_savings);
+  const remaining=funds-beforeArrival-(japanCashTotal*rate)-recurringTotal;
+  return {d,j,cfg,rate,cats,living,essential,flexible,dorm,entrance,deposit,months,monthRows,japanCashTotal,recurringTotal,beforeArrival,funds,remaining};
+}
+
+function jbRender(model){
+  const {cfg,rate,cats,living,essential,flexible,dorm,months,monthRows,japanCashTotal,recurringTotal,beforeArrival,funds,remaining}=model;
+  if(!months.includes(jbSelectedMonth)) jbSelectedMonth=months[0];
+  document.getElementById('jb-remaining').textContent=jbKr(remaining);
+  document.getElementById('jb-remaining-copy').textContent=`Dette er en konservativ rest basert på pengene du har nå, ${beforeArrival>0?`${jbKr(beforeArrival)} i kjente trekk før avreise, `:''}hele baseplanen til januar og ingen antatt fremtidig lønn. Poster uten pris er ikke trukket fra.`;
+  document.getElementById('jb-funds').textContent=jbKr(funds);
+  document.getElementById('jb-japan-total').textContent=jbYen(japanCashTotal);
+  document.getElementById('jb-japan-nok').textContent=`≈ ${jbKr(japanCashTotal*rate)} med planleggingskurs`;
+  document.getElementById('jb-norway-total').textContent=jbKr(recurringTotal);
+  document.getElementById('jb-unpriced-count').textContent=String((cfg.unpriced??[]).length);
+  document.getElementById('jb-normal-total').textContent=jbYen(living+dorm);
+  document.getElementById('jb-dorm').textContent=jbYen(dorm);
+  document.getElementById('jb-essential').textContent=jbYen(essential);
+  document.getElementById('jb-flex').textContent=jbYen(flexible);
+  document.getElementById('jb-flex-detail').textContent=`≈ ${jbYen(flexible/30*7)} / uke · ${jbYen(flexible/30)} / dag`;
+  document.getElementById('jb-rate').textContent=`1 JPY = ${rate.toFixed(6)} NOK`;
+  document.getElementById('jb-rate-date').textContent=`kurs ${cfg.planning_rate?.as_of ?? '—'}`;
+
+  document.getElementById('jb-month-strip').innerHTML=monthRows.map(row=>{
+    const active=row.key===jbSelectedMonth;
+    const dt=jbMonthDate(row.key);
+    return `<button class="jb-month${active?' active':''}" data-jb-month="${row.key}" type="button">
+      <span>${jbTitle(jbMonth.format(dt))}</span>
+      <strong>${jbYen(row.japanCash)}</strong>
+      <small>+ ${jbKr(row.recurringNok)} Norge</small>
+      ${row.isLast?'<i>dorm via depositum</i>':''}
+    </button>`;
+  }).join('');
+  document.querySelectorAll('[data-jb-month]').forEach(b=>b.addEventListener('click',()=>{jbSelectedMonth=b.dataset.jbMonth;jbRender(model);document.getElementById('jb-month-detail')?.scrollIntoView({behavior:'smooth',block:'nearest'});}));
+  jbRenderMonth(model);
+
+  document.getElementById('jb-category-list').innerHTML=cats.map(x=>`<div class="jb-line">
+    <div><strong>${jbEsc(x.name)}</strong><span>${x.kind==='flexible'?'Fri pott':'Nødvendig pott'} · Budsjett</span></div>
+    <b>${jbYen(x.amount_jpy)}</b>
+  </div>`).join('');
+
+  document.getElementById('jb-unpriced-list').innerHTML=(cfg.unpriced??[]).map(x=>`<div class="jb-unpriced-row"><span></span><strong>${jbEsc(x)}</strong><b>Mangler beløp</b></div>`).join('');
+
+  const homeCopy=document.getElementById('japan-home-copy');
+  if(homeCopy) homeCopy.textContent=`Vanlig måned: ${jbYen(living+dorm)} · fri pott ${jbYen(flexible)}.`;
+}
+
+function jbRenderMonth(model){
+  const row=model.monthRows.find(x=>x.key===jbSelectedMonth); if(!row) return;
+  const dt=jbMonthDate(row.key);
+  const japLines=[];
+  if(row.isFirst){
+    japLines.push(['Innflyttingsavgift',model.entrance,'Bekreftet · Kansai University','exact']);
+    japLines.push(['Depositum',model.deposit,'Låst kapital · brukes mot siste dormmåned','deposit']);
+  }
+  if(!row.isLast) japLines.push(['Global House',model.dorm,'Bekreftet månedsavgift','exact']);
+  else japLines.push(['Global House',model.dorm,'Dekkes av depositumet · ingen ny kontantbetaling','covered']);
+  japLines.push(['Nødvendige hverdags-potter',model.essential,'Budsjett','budget']);
+  japLines.push(['Fri / fleksibel pott',model.flexible,'Budsjett','flex']);
+  const totalApprox=row.japanCash*model.rate+row.recurringNok;
+  const recurringHtml=row.recurring.map(x=>`<div class="jb-detail-line"><div><strong>${jbEsc(x.name)}</strong><span>${jbDate.format(x.due_date)} · bekreftet fast trekk</span></div><b>${jbKr(x.cash_amount,true)}</b></div>`).join('') || '<div class="jb-empty">Ingen norske faste trekk registrert denne måneden.</div>';
+  document.getElementById('jb-month-detail').innerHTML=`
+    <div class="jb-detail-head">
+      <div><p class="panel-kicker">VALGT MÅNED</p><h3>${jbTitle(jbMonth.format(dt))}</h3><p>${row.isFirst?'Oppstartsmåneden er dyrere fordi dormavgift, innflyttingsavgift og depositum kommer samtidig.':row.isLast?'Siste dormmåned er økonomisk med i planen, men den nye kontantbetalingen dekkes av depositumet som allerede ble låst i september.':'En vanlig måned uten store engangsposter.'}</p></div>
+      <div class="jb-detail-totals"><div><span>Ny cash i Japan</span><strong>${jbYen(row.japanCash)}</strong></div><div><span>Norge</span><strong>${jbKr(row.recurringNok)}</strong></div><div><span>Omtrent totalt</span><strong>≈ ${jbKr(totalApprox)}</strong></div></div>
+    </div>
+    <div class="jb-detail-columns">
+      <div><h4>Japan</h4>${japLines.map(x=>`<div class="jb-detail-line ${x[3]}"><div><strong>${jbEsc(x[0])}</strong><span>${jbEsc(x[2])}</span></div><b>${jbYen(x[1])}</b></div>`).join('')}</div>
+      <div><h4>Norske faste trekk</h4>${recurringHtml}</div>
+    </div>`;
+}
+
+async function jbLoad(){
+  if(jbLoading || !jbEnsure()) return;
+  const app=document.getElementById('app'); if(!app || app.classList.contains('hidden')) return;
+  jbLoading=true;
+  try{
+    const r=await fetch('/api/dashboard',{credentials:'same-origin',cache:'no-store'}); if(!r.ok) return;
+    jbData=await r.json();
+    const budget=jbData?.japan_plan?.budget;
+    if(!budget) return;
+    jbRender(jbBuildModel(jbData));
+  }finally{jbLoading=false;}
+}
+
+function jbBoot(){
+  const app=document.getElementById('app'); if(!app) return;
+  const run=()=>{ if(!app.classList.contains('hidden')) jbLoad(); };
+  run();
+  new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});
+  document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(jbLoad,200));
+}
+
+jbBoot();
