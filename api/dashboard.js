@@ -20,6 +20,13 @@ export default async function handler(req, res) {
         ORDER BY document_date DESC NULLS LAST, created_at DESC
         LIMIT 1
       ),
+      private_config AS (
+        SELECT extracted_summary
+        FROM documents
+        WHERE document_type = 'moneyos_config' AND source_name = 'MoneyOS private config'
+        ORDER BY document_date DESC NULLS LAST, created_at DESC
+        LIMIT 1
+      ),
       monthly_history AS (
         SELECT key AS month,
           COALESCE((value->>'income_total')::numeric, 0) AS income,
@@ -125,11 +132,13 @@ export default async function handler(req, res) {
         (SELECT MAX(transaction_date) FROM transactions WHERE COALESCE(is_pending,false)=false) AS latest_transaction_date,
         (SELECT MAX(document_date) FROM documents WHERE document_type = 'account_overview') AS account_snapshot_date,
         (SELECT extracted_summary->'source_range'->>'to' FROM history_document) AS source_through,
-        COALESCE((SELECT ROUND(SUM(current_balance)::numeric,2) FROM accounts WHERE is_active=true AND account_type <> 'savings'),0) AS liquid_non_savings
+        COALESCE((SELECT ROUND(SUM(current_balance)::numeric,2) FROM accounts WHERE is_active=true AND account_type <> 'savings'),0) AS liquid_non_savings,
+        COALESCE((SELECT extracted_summary FROM private_config), '{}'::jsonb) AS private_config
     `;
 
     const row = rows[0] ?? {};
     const payload = row.dashboard ?? {};
+    const config = row.private_config ?? {};
     payload.spending_by_category = row.spending_by_category ?? [];
     payload.fixed_costs = row.fixed_costs ?? [];
     payload.monthly_history = row.monthly_history ?? [];
@@ -155,14 +164,11 @@ export default async function handler(req, res) {
     payload.japan_plan = {
       living_budget_monthly: Number(row.next_budget_total ?? 0),
       confirmed_fixed_monthly: Number(row.fixed_monthly_total ?? 0),
-      combined_monthly: Number(row.next_budget_total ?? 0) + Number(row.fixed_monthly_total ?? 0)
+      combined_monthly: Number(row.next_budget_total ?? 0) + Number(row.fixed_monthly_total ?? 0),
+      ...(config.japan ?? {})
     };
-    payload.review_candidates = [
-      { name: 'Telenor', amount: 89, reason: 'Svært tydelig historisk månedstrekk, men status under Japan er ikke bekreftet.' },
-      { name: 'Tryg', amount: 68.16, reason: 'Repeterende forsikringstrekk. Holdes utenfor fremtidsbudsjettet til vi vet om den fortsetter.' },
-      { name: 'Mage.space', amount: 98.93, reason: 'Bare ett observert trekk i siste import. Ikke nok historikk til å kalle den fast.' }
-    ];
-    payload.inactive_notes = 'Fremtind, Family Nett og Sporty er ikke regnet som aktive fremover.';
+    payload.review_candidates = config.review_candidates ?? [];
+    payload.inactive_notes = config.inactive_notes ?? '';
 
     return res.status(200).json(payload);
   } catch (error) {
