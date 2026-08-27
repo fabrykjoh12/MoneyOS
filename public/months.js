@@ -260,3 +260,9 @@ function bootMonths() {
 }
 
 bootMonths();
+
+const japanBudgetStyle = document.createElement('link');
+japanBudgetStyle.rel = 'stylesheet';
+japanBudgetStyle.href = '/japan-budget.css';
+document.head.appendChild(japanBudgetStyle);
+import('/japan-budget.js').catch(error => console.error('Japan budget failed to load', error));
