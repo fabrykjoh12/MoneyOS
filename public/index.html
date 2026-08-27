@@ -8,6 +8,7 @@
   <title>MoneyOS</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/months.css" />
+  <link rel="stylesheet" href="/usability.css" />
 </head>
 <body>
   <div id="login" class="login-shell hidden">
@@ -29,21 +30,22 @@
       <nav class="side-nav" aria-label="MoneyOS">
         <button class="nav-item active" data-view="today" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.2 12 4l8 7.2V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>
-          <span>I dag</span>
+          <span>Hjem</span>
         </button>
         <button class="nav-item" data-view="money" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 9h18M16 14h2"/></svg>
           <span>Penger</span>
-        </button>
-        <button class="nav-item" data-view="horizon" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16 9 11l4 4 7-8"/><path d="M17 7h3v3"/></svg>
-          <span>Fremover</span>
         </button>
         <button class="nav-item" data-view="plans" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v3M18 3v3M4 9h16"/><rect x="4" y="5" width="16" height="16" rx="3"/></svg>
           <span>Japan</span>
         </button>
       </nav>
+
+      <div class="side-secondary">
+        <span>Mer</span>
+        <button class="secondary-nav" data-view="horizon" type="button">Neste 30 dager</button>
+      </div>
 
       <div class="sidebar-foot">
         <div class="sync-state"><span class="sync-dot"></span><span id="sync-chip">—</span></div>
@@ -61,55 +63,49 @@
       <div id="freshness-banner" class="freshness hidden"></div>
 
       <section class="view active" data-view-panel="today">
-        <div class="content-shell today-shell">
-          <header class="page-heading">
-            <div><p id="today-date" class="page-kicker"></p><h1>I dag</h1></div>
+        <div class="content-shell home-shell">
+          <header class="page-heading home-heading">
+            <div><p id="today-date" class="page-kicker"></p><h1>Hjem</h1></div>
             <div class="status-pill"><span></span> Oppdatert</div>
           </header>
 
-          <section class="balance-hero">
-            <div class="hero-copy">
-              <p class="hero-label">DET DU FAKTISK KAN BRUKE</p>
-              <button id="safe-button" class="safe-button" type="button" aria-label="Forklar trygt å bruke">
-                <span id="safe-to-spend" class="safe-number">—</span><span class="safe-unit">kr</span>
-              </button>
-              <p id="safe-caption" class="safe-caption">—</p>
-              <div class="hero-meta">
-                <div><span>Hvis du fordeler det</span><strong id="daily-safe">—</strong></div>
-                <div><span>Regninger før lønn</span><strong id="days-to-payday">—</strong></div>
-                <div><span>Neste lønn</span><strong id="next-payday">—</strong></div>
-              </div>
-              <button id="why-button" class="hero-link" type="button">Vis regnestykket</button>
+          <section class="home-answer">
+            <div class="home-answer-main">
+              <p class="hero-label">FREM TIL NESTE LØNN</p>
+              <h2>Du kan bruke <button id="safe-button" class="inline-safe" type="button"><span id="safe-to-spend">—</span> kr</button>.</h2>
+              <p id="safe-caption" class="home-answer-copy">—</p>
             </div>
-            <div class="hero-orbit" aria-hidden="true">
-              <div class="orb orb-a"></div><div class="orb orb-b"></div><div class="orb orb-c"></div>
-              <div class="hero-ring ring-one"></div><div class="hero-ring ring-two"></div>
+            <div class="home-answer-side">
+              <div><span>Fordelt jevnt</span><strong id="daily-safe">—</strong></div>
+              <div><span>Neste lønn</span><strong id="next-payday">—</strong></div>
+              <button id="why-button" class="quiet-button" type="button">Vis regnestykket</button>
             </div>
           </section>
 
-          <section class="dashboard-grid">
-            <article class="panel upcoming-panel">
-              <div class="panel-head"><div><p class="panel-kicker">DET SOM KOMMER</p><h2>Neste regninger</h2></div><button class="panel-link" data-go="horizon" type="button">Se alle</button></div>
-              <div id="upcoming-list" class="upcoming-list"></div>
+          <section class="home-columns">
+            <article class="home-section">
+              <div class="section-heading"><div><p class="panel-kicker">DET SOM KOMMER</p><h2>Neste regninger</h2></div><button data-go="horizon" class="text-action" type="button">Se alle</button></div>
+              <div id="upcoming-list" class="meaning-list"></div>
+              <p id="upcoming-summary" class="section-footnote"></p>
             </article>
 
-            <article class="panel month-panel">
-              <div class="panel-head"><div><p class="panel-kicker">DENNE MÅNEDEN</p><h2>Hva har skjedd?</h2></div></div>
-              <strong id="month-expenses" class="month-number">—</strong>
-              <p id="month-story" class="panel-note">—</p>
-              <div id="month-breakdown" class="upcoming-list"></div>
-              <button class="panel-link panel-link-bottom" data-go="money" type="button">Se transaksjoner</button>
-            </article>
-
-            <article class="panel japan-panel">
-              <div class="japan-glow" aria-hidden="true"></div>
-              <div class="panel-head"><div><p class="panel-kicker">JAPAN</p><h2>Å leve der</h2></div></div>
-              <strong id="japan-combined" class="japan-number">—</strong>
-              <p class="panel-note">planlagt levebudsjett per måned</p>
-              <div id="japan-state" class="japan-state"><span></span> —</div>
-              <button class="panel-link panel-link-bottom" data-go="plans" type="button">Åpne Japan</button>
+            <article class="home-section month-meaning">
+              <div class="section-heading"><div><p class="panel-kicker">DENNE MÅNEDEN</p><h2 id="month-title">Hva har skjedd?</h2></div><button data-go="money" class="text-action" type="button">Åpne Penger</button></div>
+              <strong id="month-expenses" class="meaning-number">—</strong>
+              <p id="month-story" class="meaning-story">—</p>
+              <div id="month-breakdown" class="meaning-list compact"></div>
             </article>
           </section>
+
+          <section class="attention-section">
+            <div class="section-heading"><div><p class="panel-kicker">OPPMERKSOMHET</p><h2>Dette bør du vite</h2></div></div>
+            <div id="attention-list" class="attention-list"></div>
+          </section>
+
+          <button class="japan-home-strip" data-go="plans" type="button">
+            <div><p class="panel-kicker">JAPAN</p><strong id="japan-home-title">—</strong><span id="japan-home-copy">—</span></div>
+            <span class="strip-arrow">→</span>
+          </button>
         </div>
       </section>
 
@@ -140,62 +136,89 @@
         </div>
       </section>
 
-      <section class="view" data-view-panel="horizon">
-        <div class="content-shell secondary-shell">
-          <header class="page-heading split-heading"><div><p class="page-kicker">FREMOVER</p><h1>Hva vet vi kommer?</h1><p class="page-intro">Dette er ikke en spådom. Vi viser bare bekreftede eller planlagte beløp som allerede er kjent.</p></div><div class="segmented"><button class="range active" data-days="30">30 dager</button><button class="range" data-days="60">60</button><button class="range" data-days="90">90</button></div></header>
-          <section class="horizon-stats"><div><span>Regninger vi vet kommer</span><strong id="horizon-out">—</strong></div><div><span>Bekreftet inn</span><strong id="horizon-in">—</strong></div><div><span>Forskjell</span><strong id="horizon-net">—</strong></div></section>
-          <article class="panel chart-panel"><div class="chart-wrap"><svg id="horizon-chart" viewBox="0 0 1000 360" role="img" aria-label="Kontantstrøm fremover"></svg></div><p id="horizon-note" class="chart-note"></p></article>
-          <article class="panel timeline-panel"><div class="panel-head"><div><p class="panel-kicker">TIDSLINJE</p><h2>Hva skjer når?</h2></div></div><div id="horizon-events" class="event-list"></div></article>
+      <section class="view" data-view-panel="plans">
+        <div class="content-shell japan-shell">
+          <header class="page-heading japan-heading">
+            <div><p class="page-kicker">JAPAN</p><h1>Penger i Japan</h1></div>
+            <div class="phase-switch" role="group" aria-label="Japan-visning">
+              <button class="japan-mode active" data-japan-mode="pre" type="button">Før avreise</button>
+              <button class="japan-mode" data-japan-mode="live" type="button">I Japan</button>
+            </div>
+          </header>
+
+          <section class="japan-answer">
+            <p id="japan-phase-kicker" class="hero-label">—</p>
+            <h2 id="japan-phase-title">—</h2>
+            <p id="japan-phase-copy">—</p>
+            <div class="japan-answer-stats">
+              <div><span>Penger totalt nå</span><strong id="japan-total-funds">—</strong></div>
+              <div><span>Planlagt liv per måned</span><strong id="plan-living">—</strong></div>
+              <div><span>Andre faste kostnader</span><strong id="japan-fixed">—</strong></div>
+            </div>
+          </section>
+
+          <section id="japan-pre" class="japan-mode-panel">
+            <div class="japan-two-col">
+              <article class="home-section startup-section">
+                <div class="section-heading"><div><p class="panel-kicker">VED OPPSTART</p><h2>Kjente dorm-kostnader</h2></div><strong id="japan-startup-total" class="inline-value">—</strong></div>
+                <div id="japan-startup-list" class="meaning-list"></div>
+                <p class="section-footnote">Beløpene står i yen. MoneyOS trekker dem ikke fra NOK-saldoen uten en lagret valutakurs.</p>
+              </article>
+
+              <article class="home-section monthly-plan-section">
+                <div class="section-heading"><div><p class="panel-kicker">HVER MÅNED</p><h2>Hva planen faktisk betyr</h2></div></div>
+                <div class="monthly-explain"><div><span>Etter bolig</span><strong id="plan-after-housing">—</strong></div><div><span>Ca. per dag etter bolig</span><strong id="plan-daily">—</strong></div></div>
+                <div id="japan-budget-list" class="meaning-list compact"></div>
+              </article>
+            </div>
+          </section>
+
+          <section id="japan-live" class="japan-mode-panel hidden">
+            <article class="japan-live-hero">
+              <p class="panel-kicker">DAGLIG VISNING</p>
+              <h2><span id="japan-live-daily">—</span> tilgjengelig per dag</h2>
+              <p id="japan-live-story">—</p>
+              <div class="japan-live-meta"><div><span>Igjen denne budsjettmåneden</span><strong id="japan-live-month">—</strong></div><div><span>Dager igjen</span><strong id="japan-live-days">—</strong></div></div>
+            </article>
+            <article class="home-section">
+              <div class="section-heading"><div><p class="panel-kicker">KATEGORIER</p><h2>Hva har du igjen?</h2></div></div>
+              <div id="japan-live-budget-list" class="meaning-list"></div>
+              <p id="japan-live-note" class="section-footnote">—</p>
+            </article>
+          </section>
         </div>
       </section>
 
-      <section class="view" data-view-panel="plans">
-        <div class="content-shell secondary-shell">
-          <header class="page-heading"><div><p class="page-kicker">JAPAN</p><h1>Hva trenger du å leve for?</h1><p class="page-intro">Japan-budsjettet viser bare penger til livet i Japan. Abonnementer og andre kostnader som fortsetter uansett land vises separat.</p></div></header>
-
-          <section class="plan-hero">
-            <div><p class="hero-label">PLANLAGT LEVEBUDSJETT PER MÅNED</p><strong id="plan-living">—</strong><p class="page-intro">Bolig, mat, transport, shopping og andre vanlige Japan-utgifter.</p></div>
-            <div class="plan-meta"><div><span>Bolig</span><b id="plan-housing">—</b></div><div><span>Igjen etter bolig</span><b id="plan-after-housing">—</b></div><div><span>Ca. per dag etter bolig</span><b id="plan-daily">—</b></div></div>
-          </section>
-
-          <article class="panel budget-panel">
-            <div class="panel-head"><div><p class="panel-kicker">MÅNEDLIG PLAN</p><h2>Hva pengene er til</h2></div><strong id="japan-budget-total" class="inline-value">—</strong></div>
-            <div id="japan-budget-list" class="budget-list"></div>
-
-            <div class="fixed-section">
-              <div class="panel-head"><div><p class="panel-kicker">GLOBAL HOUSE · OFFISIELLE 2026-TALL</p><h2>Det du må vite om boligen</h2></div></div>
-              <div class="budget-list">
-                <div class="budget-line"><div><div class="row-title">Månedlig dormavgift</div><div class="row-sub">Strøm, vann, internett og sengetøy er inkludert.</div></div><div class="budget-amount">¥63 000</div></div>
-                <div class="budget-line"><div><div class="row-title">Innflyttingsavgift</div><div class="row-sub">Engangsbeløp ved innflytting.</div></div><div class="budget-amount">¥20 000</div></div>
-                <div class="budget-line"><div><div class="row-title">Depositum</div><div class="row-sub">Likviditetsbehov ved innflytting; brukes mot siste måneds dormavgift dersom alt er oppgjort.</div></div><div class="budget-amount">¥63 000</div></div>
-              </div>
-              <p class="panel-note">Kilde: Kansai University, gjeldende Global House-kostnader for 2026.</p>
-            </div>
-
-            <div class="fixed-section">
-              <div class="panel-head"><div><p class="panel-kicker">UTENFOR JAPAN-BUDSJETTET</p><h2>Kostnader som følger deg</h2></div></div>
-              <div class="plan-meta"><div><span>Faste kostnader</span><b id="japan-fixed">—</b></div><div><span>Japan + faste kostnader</span><b id="plan-combined">—</b></div><div><span>Hva betyr det?</span><b>Ikke bland dem</b></div></div>
-              <p class="panel-note">Disse kostnadene er reelle, men de sier ikke noe om hvor dyrt hverdagslivet i Japan er. Derfor vises de separat.</p>
-            </div>
+      <section class="view" data-view-panel="horizon">
+        <div class="content-shell detail-page-shell">
+          <header class="page-heading detail-page-heading">
+            <div><p class="page-kicker">FREMOVER</p><h1>Neste 30 dager</h1><p class="page-intro">Bare hendelser MoneyOS faktisk kjenner til.</p></div>
+            <button class="back-home" data-go="today" type="button">← Tilbake til Hjem</button>
+          </header>
+          <article class="known-future">
+            <h2 id="horizon-summary">—</h2>
+            <p id="horizon-note">—</p>
+            <div class="segmented"><button class="range active" data-days="30" type="button">30 dager</button><button class="range" data-days="60" type="button">60</button><button class="range" data-days="90" type="button">90</button></div>
           </article>
+          <article class="home-section future-events-section"><div class="section-heading"><div><p class="panel-kicker">TIDSLINJE</p><h2>Hva skjer når?</h2></div></div><div id="horizon-events" class="meaning-list"></div></article>
+          <div class="hidden"><span id="horizon-out"></span><span id="horizon-in"></span><span id="horizon-net"></span><svg id="horizon-chart"></svg></div>
         </div>
       </section>
     </section>
 
     <nav class="mobile-nav" aria-label="Mobilnavigasjon">
-      <button class="mobile-item active" data-view="today">I dag</button>
+      <button class="mobile-item active" data-view="today">Hjem</button>
       <button class="mobile-item" data-view="money">Penger</button>
-      <button class="mobile-item" data-view="horizon">Fremover</button>
       <button class="mobile-item" data-view="plans">Japan</button>
     </nav>
   </main>
 
   <div id="why-sheet" class="sheet-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="why-title">
     <section class="detail-sheet">
-      <div class="sheet-head"><div><p class="panel-kicker">REGNESTYKKET</p><h2 id="why-title">Det du faktisk kan bruke</h2></div><button id="close-why" class="close-button" type="button">Lukk</button></div>
+      <div class="sheet-head"><div><p class="panel-kicker">REGNESTYKKET</p><h2 id="why-title">Pengene du kan bruke</h2></div><button id="close-why" class="close-button" type="button">Lukk</button></div>
       <div id="why-safe" class="sheet-total">—</div>
       <div id="derivation-list" class="derivation-list"></div>
-      <p class="sheet-note">Vi setter først av kjente regninger og beskyttede penger. Det som står igjen er beløpet MoneyOS kaller trygt å bruke.</p>
+      <p class="sheet-note">Kjente regninger og beskyttede penger settes av først. Resten er beløpet MoneyOS viser på Hjem.</p>
     </section>
   </div>
 
