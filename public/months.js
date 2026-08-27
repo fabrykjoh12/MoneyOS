@@ -2,6 +2,7 @@ const monthMoney = new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 });
 const monthMoney2 = new Intl.NumberFormat('nb-NO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const monthName = new Intl.DateTimeFormat('nb-NO', { month: 'long', year: 'numeric' });
 const monthShort = new Intl.DateTimeFormat('nb-NO', { month: 'short' });
+const transactionDate = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' });
 let monthData = [];
 let selectedMonth = null;
 let loadingMonths = false;
@@ -20,6 +21,12 @@ function titleCase(value) {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+}
+
 function ensureExplorer() {
   if (document.getElementById('month-explorer')) return true;
   const balance = document.querySelector('[data-view-panel="money"] .money-balance');
@@ -33,7 +40,7 @@ function ensureExplorer() {
       <div>
         <p class="panel-kicker">MÅNEDER</p>
         <h2>Hvor gikk pengene?</h2>
-        <p>Velg en måned for å se inn, ut og hvilke kategorier du brukte penger på.</p>
+        <p>Velg en måned, og trykk deretter på en kategori for å se hva pengene faktisk ble brukt på.</p>
       </div>
       <span id="months-count" class="months-count"></span>
     </div>
@@ -59,7 +66,33 @@ function ensureExplorer() {
       <p id="selected-month-source" class="month-source"></p>
     </div>`;
   balance.insertAdjacentElement('afterend', explorer);
+  ensureCategorySheet();
   return true;
+}
+
+function ensureCategorySheet() {
+  if (document.getElementById('category-sheet-backdrop')) return;
+  const backdrop = document.createElement('div');
+  backdrop.id = 'category-sheet-backdrop';
+  backdrop.className = 'category-sheet-backdrop hidden';
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.innerHTML = `
+    <section class="category-sheet" aria-labelledby="category-sheet-title">
+      <div class="category-sheet-head">
+        <div>
+          <p id="category-sheet-month" class="panel-kicker">KATEGORI</p>
+          <h2 id="category-sheet-title">—</h2>
+          <p id="category-sheet-summary" class="category-sheet-summary">—</p>
+        </div>
+        <button id="close-category-sheet" class="category-close" type="button">Lukk</button>
+      </div>
+      <div id="category-transactions" class="category-transactions"></div>
+      <p id="category-sheet-note" class="category-sheet-note"></p>
+    </section>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('close-category-sheet')?.addEventListener('click', closeCategorySheet);
+  backdrop.addEventListener('click', event => { if (event.target === backdrop) closeCategorySheet(); });
 }
 
 async function loadMonths() {
@@ -115,7 +148,7 @@ function renderMonthDetail() {
   const net = Number(item.net || 0);
   const categories = Object.entries(item.categories || {})
     .map(([category, amount]) => ({ category, amount: Number(amount || 0) }))
-    .filter(item => item.amount > 0)
+    .filter(entry => entry.amount > 0)
     .sort((a, b) => b.amount - a.amount);
   const top = categories[0];
   const previous = monthData[index + 1];
@@ -139,19 +172,81 @@ function renderMonthDetail() {
   const categoryRoot = document.getElementById('selected-categories');
   categoryRoot.innerHTML = categories.map((entry, categoryIndex) => {
     const pct = expenses > 0 ? entry.amount / expenses * 100 : 0;
-    return `<div class="category-row">
+    return `<button class="category-row category-button" data-category="${encodeURIComponent(entry.category)}" type="button" aria-label="Vis kjøp i ${escapeHtml(entry.category)}">
       <div class="category-main">
         <span class="category-rank">${String(categoryIndex + 1).padStart(2, '0')}</span>
-        <div class="category-copy"><strong>${entry.category}</strong><div class="category-track"><span style="width:${Math.min(pct, 100).toFixed(1)}%"></span></div></div>
+        <div class="category-copy"><strong>${escapeHtml(entry.category)}</strong><div class="category-track"><span style="width:${Math.min(pct, 100).toFixed(1)}%"></span></div></div>
         <span class="category-percent">${Math.round(pct)}%</span>
       </div>
-      <strong class="category-amount">${nok(entry.amount, true)}</strong>
-    </div>`;
+      <div class="category-action"><strong class="category-amount">${nok(entry.amount, true)}</strong><span aria-hidden="true">›</span></div>
+    </button>`;
   }).join('') || '<p class="month-empty">Ingen kategoriserte utgifter denne måneden.</p>';
+
+  categoryRoot.querySelectorAll('[data-category]').forEach(button => button.addEventListener('click', () => {
+    openCategory(decodeURIComponent(button.dataset.category));
+  }));
 
   document.getElementById('selected-month-source').textContent = item.source === 'live'
     ? 'Bokførte banktransaksjoner hittil denne måneden. Reserverte kjøp og interne overføringer er ikke med i forbruket.'
-    : 'Historisk månedssammendrag fra bankdata. Interne overføringer er ikke regnet som forbruk.';
+    : 'Historisk månedssammendrag fra bankdata. Trykk på en kategori; enkeltkjøp vises der de er importert på transaksjonsnivå.';
+}
+
+async function openCategory(category) {
+  ensureCategorySheet();
+  const item = monthData.find(row => row.month === selectedMonth);
+  if (!item) return;
+  const date = monthDate(item.month);
+  const expected = Number(item.categories?.[category] || 0);
+  const backdrop = document.getElementById('category-sheet-backdrop');
+  const root = document.getElementById('category-transactions');
+  const note = document.getElementById('category-sheet-note');
+
+  document.getElementById('category-sheet-month').textContent = titleCase(monthName.format(date)).toUpperCase();
+  document.getElementById('category-sheet-title').textContent = category;
+  document.getElementById('category-sheet-summary').textContent = `${nok(expected, true)} brukt i denne kategorien`;
+  root.innerHTML = '<div class="category-loading">Henter kjøp…</div>';
+  note.textContent = '';
+  backdrop.classList.remove('hidden');
+  document.body.classList.add('sheet-open');
+
+  try {
+    const params = new URLSearchParams({ month: selectedMonth, category });
+    const response = await fetch(`/api/month-transactions?${params.toString()}`, { credentials: 'same-origin', cache: 'no-store' });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body) throw new Error(body?.error || 'Kunne ikke hente kjøpene');
+
+    if (!body.available || !Array.isArray(body.transactions) || !body.transactions.length) {
+      root.innerHTML = `<div class="category-unavailable"><strong>Enkeltkjøpene er ikke importert ennå.</strong><p>MoneyOS har den sikre kategorisummen på ${nok(expected, true)}, men denne eldre måneden ligger foreløpig bare som historisk sammendrag. Original bankutskrift finnes og kan etterfylles uten å gjette.</p></div>`;
+      note.textContent = 'Ingen transaksjoner er konstruert eller estimert.';
+      return;
+    }
+
+    root.innerHTML = body.transactions.map(row => {
+      const label = row.merchant || row.description || 'Transaksjon';
+      const detail = row.merchant && row.description && row.description !== row.merchant ? row.description : row.account;
+      return `<div class="category-transaction-row">
+        <div class="category-merchant-mark">${escapeHtml((String(label).trim().slice(0,2) || '•').toUpperCase())}</div>
+        <div class="category-transaction-copy">
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(detail || row.account || '')} · ${transactionDate.format(new Date(row.transaction_date))}</span>
+        </div>
+        <strong class="category-transaction-amount">−${nok(row.amount, true)}</strong>
+      </div>`;
+    }).join('');
+
+    const actual = Number(body.total || 0);
+    const difference = Math.abs(actual - expected);
+    note.textContent = difference > 1
+      ? `Transaksjonene som er importert summerer ${nok(actual, true)}, mens månedssammendraget viser ${nok(expected, true)}. Forskjellen er synlig fordi MoneyOS ikke skjuler datamismatch.`
+      : `${body.count} bokførte kjøp · ${nok(actual, true)} totalt. Reserverte kjøp og interne overføringer er ikke med.`;
+  } catch (error) {
+    root.innerHTML = `<div class="category-unavailable"><strong>Kunne ikke hente kjøpene.</strong><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+function closeCategorySheet() {
+  document.getElementById('category-sheet-backdrop')?.classList.add('hidden');
+  document.body.classList.remove('sheet-open');
 }
 
 function bootMonths() {
@@ -161,6 +256,7 @@ function bootMonths() {
   tryLoad();
   new MutationObserver(tryLoad).observe(app, { attributes: true, attributeFilter: ['class'] });
   document.getElementById('refresh')?.addEventListener('click', () => setTimeout(loadMonths, 150));
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') closeCategorySheet(); });
 }
 
 bootMonths();
