@@ -1,6 +1,13 @@
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
 
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist', { recursive: true });
 await cp('public', 'dist', { recursive: true });
-console.log('Finance V3 static assets copied public -> dist');
+
+const indexPath = 'dist/index.html';
+let html = await readFile(indexPath, 'utf8');
+html = html.replace('</head>', '  <link rel="stylesheet" href="/purchase-check.css" />\n</head>');
+html = html.replace('</body>', '  <script type="module" src="/purchase-check.js"></script>\n</body>');
+await writeFile(indexPath, html);
+
+console.log('MoneyOS assets copied and decision tools injected');
