@@ -6,8 +6,8 @@ await cp('public', 'dist', { recursive: true });
 
 const indexPath = 'dist/index.html';
 let html = await readFile(indexPath, 'utf8');
-html = html.replace('</head>', '  <link rel="stylesheet" href="/purchase-check.css" />\n</head>');
-html = html.replace('</body>', '  <script type="module" src="/purchase-check.js"></script>\n</body>');
+html = html.replace('</head>', '  <link rel="stylesheet" href="/purchase-check.css" />\n  <link rel="stylesheet" href="/monthly-margin.css" />\n</head>');
+html = html.replace('</body>', '  <script type="module" src="/purchase-check.js"></script>\n  <script type="module" src="/monthly-margin.js"></script>\n</body>');
 await writeFile(indexPath, html);
 
 console.log('MoneyOS assets copied and decision tools injected');
