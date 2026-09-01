@@ -4,6 +4,7 @@ let tbTrips = [];
 let tbDashboard = null;
 let tbEditing = null;
 let tbLoading = false;
+const tbLabels={transport:'Transport',stay:'Overnatting',food:'Mat',activities:'Aktiviteter',other:'Shopping / annet'};
 
 function tbYen(v){ return `¥${tbMoney.format(Number(v||0))}`; }
 function tbKr(v){ return `${tbMoney.format(Number(v||0))} kr`; }
@@ -46,8 +47,8 @@ function tbEnsure(){
     <div id="tb-list" class="tb-list"></div>`;
   const method=root.querySelector('.jb-method');
   if(method) method.insertAdjacentElement('beforebegin',section); else root.appendChild(section);
-  document.getElementById('tb-new')?.addEventListener('click',()=>tbOpen());
-  tbEnsureModal(); return true;
+  document.getElementById('tb-new')?.addEventListener('click',()=>tbOpenEdit());
+  tbEnsureModal(); tbEnsureDetail(); return true;
 }
 function tbEnsureModal(){
   if(document.getElementById('tb-backdrop')) return;
@@ -69,11 +70,19 @@ function tbEnsureModal(){
       <p id="tb-error"></p>
     </form></section>`;
   document.body.appendChild(el);
-  ['tb-close','tb-cancel'].forEach(id=>document.getElementById(id)?.addEventListener('click',tbClose));
-  el.addEventListener('click',e=>{if(e.target===el)tbClose();});
+  ['tb-close','tb-cancel'].forEach(id=>document.getElementById(id)?.addEventListener('click',tbCloseEdit));
+  el.addEventListener('click',e=>{if(e.target===el)tbCloseEdit();});
   document.getElementById('tb-form')?.addEventListener('submit',tbSave);
   document.getElementById('tb-delete')?.addEventListener('click',tbDelete);
   ['tb-transport','tb-stay','tb-food','tb-activities','tb-other'].forEach(id=>document.getElementById(id)?.addEventListener('input',tbFormTotal));
+}
+function tbEnsureDetail(){
+  if(document.getElementById('tb-detail-backdrop'))return;
+  const el=document.createElement('div');el.id='tb-detail-backdrop';el.className='tb-backdrop hidden';
+  el.innerHTML=`<section class="tb-modal tb-detail"><div class="tb-modal-head"><div><p class="panel-kicker">TURREGNSKAP</p><h2 id="tb-detail-title">—</h2><p id="tb-detail-dates">—</p></div><button id="tb-detail-close" type="button">Lukk</button></div><div id="tb-detail-body"></div><div class="tb-detail-actions"><button id="tb-detail-edit" type="button">Rediger budsjett</button></div></section>`;
+  document.body.appendChild(el);
+  document.getElementById('tb-detail-close')?.addEventListener('click',tbCloseDetail);
+  el.addEventListener('click',e=>{if(e.target===el)tbCloseDetail();});
 }
 function tbFormTotal(){ const ids=['transport','stay','food','activities','other']; const total=ids.reduce((s,k)=>s+Number(document.getElementById(`tb-${k}`)?.value||0),0); document.getElementById('tb-form-total').textContent=tbYen(total); }
 
@@ -82,17 +91,31 @@ function tbRender(){
   const included=tbTrips.filter(x=>x.include_in_plan!==false); const reserved=included.reduce((s,x)=>s+tbTotal(x),0);
   summary.innerHTML=tbTrips.length?`<div><span>${tbTrips.length} tur${tbTrips.length===1?'':'er'}</span><strong>${tbYen(reserved)}</strong><small>reservert utenfor vanlig månedsbudsjett</small></div>`:'<p>Ingen turer er satt opp ennå.</p>';
   list.innerHTML=tbTrips.map(trip=>{
-    const total=tbTotal(trip),days=tbDays(trip),parts=trip.budgets??{};
+    const total=Number(trip.budget_total_jpy??tbTotal(trip)),used=Number(trip.actual_total_jpy||0),remaining=total-used,days=tbDays(trip),pct=total>0?Math.min(100,used/total*100):0;
     return `<button class="tb-card" data-trip="${tbEsc(trip.id)}" type="button">
       <div class="tb-card-top"><div><span>${tbDate.format(tbParse(trip.start_date))} – ${tbDate.format(tbParse(trip.end_date))}</span><h3>${tbEsc(trip.name)}</h3></div><strong>${tbYen(total)}</strong></div>
+      <div class="tb-actual"><div><span>Brukt</span><strong>${tbYen(used)}</strong></div><div><span>Igjen</span><strong class="${remaining<0?'over':''}">${tbYen(remaining)}</strong></div></div>
+      <div class="tb-progress"><span style="width:${pct.toFixed(1)}%"></span></div>
       <div class="tb-card-meta"><span>${days} dager</span><span>${tbYen(days?total/days:0)} / dag</span><span>${trip.include_in_plan===false?'Ikke reservert':'Reservert i planen'}</span></div>
-      <div class="tb-mini"><span>Transport ${tbYen(parts.transport)}</span><span>Hotell ${tbYen(parts.stay)}</span><span>Mat ${tbYen(parts.food)}</span></div>
     </button>`;
   }).join('');
-  list.querySelectorAll('[data-trip]').forEach(b=>b.addEventListener('click',()=>tbOpen(b.dataset.trip)));
+  list.querySelectorAll('[data-trip]').forEach(b=>b.addEventListener('click',()=>tbOpenDetail(b.dataset.trip)));
   setTimeout(tbApplyBuffer,120);
 }
-function tbOpen(id=null){
+function tbOpenDetail(id){
+  const trip=tbTrips.find(x=>String(x.id)===String(id));if(!trip)return;
+  document.getElementById('tb-detail-title').textContent=trip.name;
+  document.getElementById('tb-detail-dates').textContent=`${tbDate.format(tbParse(trip.start_date))} – ${tbDate.format(tbParse(trip.end_date))}`;
+  const total=Number(trip.budget_total_jpy??tbTotal(trip)),used=Number(trip.actual_total_jpy||0),remaining=total-used;
+  const rows=Object.keys(tbLabels).map(key=>{const budget=Number(trip.budgets?.[key]||0),actual=Number(trip.actuals?.[key]||0),left=budget-actual;return `<div class="tb-detail-row"><div><strong>${tbLabels[key]}</strong><span>${tbYen(actual)} brukt av ${tbYen(budget)}</span></div><b class="${left<0?'over':''}">${tbYen(left)} igjen</b></div>`}).join('');
+  const tx=(trip.transactions??[]).map(x=>`<button class="tb-tx" data-tb-tx="${tbEsc(x.id)}" type="button"><div><strong>${tbEsc(x.merchant||x.description||'Transaksjon')}</strong><span>${tbDate.format(tbParse(x.transaction_date))} · ${tbLabels[x.bucket]||'Annet'} · ${tbEsc(x.account||'')}</span></div><b>${tbYen(x.amount_jpy)}${x.jpy_source==='planning_rate'?'<small>estimert</small>':''}</b></button>`).join('')||'<p class="tb-empty">Ingen kjøp er knyttet til denne turen ennå. Åpne en transaksjon i Penger og velg turen.</p>';
+  document.getElementById('tb-detail-body').innerHTML=`<div class="tb-detail-summary"><div><span>Budsjett</span><strong>${tbYen(total)}</strong></div><div><span>Brukt</span><strong>${tbYen(used)}</strong></div><div><span>Igjen</span><strong class="${remaining<0?'over':''}">${tbYen(remaining)}</strong></div></div><div class="tb-detail-rows">${rows}</div><div class="tb-detail-transactions"><h3>Kjøp på turen</h3>${tx}</div>`;
+  document.getElementById('tb-detail-edit').onclick=()=>{tbCloseDetail();tbOpenEdit(id)};
+  document.querySelectorAll('[data-tb-tx]').forEach(btn=>btn.addEventListener('click',()=>{const raw=btn.dataset.tbTx;if(raw.startsWith('wallet:'))return;tbCloseDetail();document.querySelector('[data-view="money"]')?.click();setTimeout(()=>document.dispatchEvent(new CustomEvent('moneyos:open-transaction',{detail:{id:raw}})),150)}));
+  document.getElementById('tb-detail-backdrop').classList.remove('hidden');document.body.classList.add('sheet-open');
+}
+function tbCloseDetail(){document.getElementById('tb-detail-backdrop')?.classList.add('hidden');document.body.classList.remove('sheet-open')}
+function tbOpenEdit(id=null){
   tbEditing=id?tbTrips.find(x=>String(x.id)===String(id)):null;
   const t=tbEditing??{budgets:{},include_in_plan:true};
   document.getElementById('tb-modal-title').textContent=tbEditing?'Rediger tur':'Ny tur';
@@ -101,15 +124,15 @@ function tbOpen(id=null){
   document.getElementById('tb-include').checked=t.include_in_plan!==false; document.getElementById('tb-delete').classList.toggle('hidden',!tbEditing); document.getElementById('tb-error').textContent=''; tbFormTotal();
   document.getElementById('tb-backdrop').classList.remove('hidden'); document.body.classList.add('sheet-open');
 }
-function tbClose(){ document.getElementById('tb-backdrop')?.classList.add('hidden');document.body.classList.remove('sheet-open');tbEditing=null; }
+function tbCloseEdit(){ document.getElementById('tb-backdrop')?.classList.add('hidden');document.body.classList.remove('sheet-open');tbEditing=null; }
 async function tbSave(e){
   e.preventDefault(); const error=document.getElementById('tb-error'); error.textContent='';
   const budgets=Object.fromEntries(['transport','stay','food','activities','other'].map(k=>[k,Number(document.getElementById(`tb-${k}`).value||0)]));
   const payload={id:tbEditing?.id,name:document.getElementById('tb-name').value,start_date:document.getElementById('tb-start').value,end_date:document.getElementById('tb-end').value,budgets,include_in_plan:document.getElementById('tb-include').checked};
-  try{const r=await fetch('/api/trips',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await r.json();if(!r.ok)throw new Error(body.error||'Kunne ikke lagre');tbTrips=body.trips??[];tbClose();await tbLoad();document.getElementById('refresh')?.click();}
+  try{const r=await fetch('/api/trips',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await r.json();if(!r.ok)throw new Error(body.error||'Kunne ikke lagre');tbTrips=body.trips??[];tbCloseEdit();await tbLoad();document.getElementById('refresh')?.click();}
   catch(err){error.textContent=err.message;}
 }
-async function tbDelete(){ if(!tbEditing)return; if(!confirm(`Slette ${tbEditing.name}?`))return; const r=await fetch(`/api/trips?id=${encodeURIComponent(tbEditing.id)}`,{method:'DELETE',credentials:'same-origin'});const body=await r.json().catch(()=>({}));if(r.ok){tbTrips=body.trips??[];tbClose();await tbLoad();document.getElementById('refresh')?.click();}else document.getElementById('tb-error').textContent=body.error||'Kunne ikke slette'; }
+async function tbDelete(){ if(!tbEditing)return; if(!confirm(`Slette ${tbEditing.name}?`))return; const r=await fetch(`/api/trips?id=${encodeURIComponent(tbEditing.id)}`,{method:'DELETE',credentials:'same-origin'});const body=await r.json().catch(()=>({}));if(r.ok){tbTrips=body.trips??[];tbCloseEdit();await tbLoad();document.getElementById('refresh')?.click();}else document.getElementById('tb-error').textContent=body.error||'Kunne ikke slette'; }
 async function tbLoad(){
   if(tbLoading||!tbEnsure())return;const app=document.getElementById('app');if(!app||app.classList.contains('hidden'))return;tbLoading=true;
   try{const [tr,dr]=await Promise.all([fetch('/api/trips',{credentials:'same-origin',cache:'no-store'}),fetch('/api/dashboard',{credentials:'same-origin',cache:'no-store'})]);if(tr.ok)tbTrips=(await tr.json()).trips??[];if(dr.ok)tbDashboard=await dr.json();tbRender();}
