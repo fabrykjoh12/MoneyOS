@@ -1,14 +1,39 @@
 const tbMoney = new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 });
 const tbDate = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' });
 let tbTrips = [];
+let tbDashboard = null;
 let tbEditing = null;
 let tbLoading = false;
 
 function tbYen(v){ return `¥${tbMoney.format(Number(v||0))}`; }
+function tbKr(v){ return `${tbMoney.format(Number(v||0))} kr`; }
 function tbEsc(v){ return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function tbParse(v){ return v?new Date(`${String(v).slice(0,10)}T12:00:00`):null; }
 function tbTotal(trip){ return Object.values(trip?.budgets??{}).reduce((s,v)=>s+Number(v||0),0); }
 function tbDays(trip){ const a=tbParse(trip.start_date),b=tbParse(trip.end_date); return a&&b?Math.max(1,Math.round((b-a)/86400000)+1):0; }
+function tbMonthKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function tbMonthDate(key){ const [y,m]=String(key).split('-').map(Number); return new Date(y,m-1,1,12,0,0); }
+function tbMonthDiff(a,b){ return (b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth()); }
+function tbMonths(cfg){ const start=tbParse(cfg?.period_start),end=tbParse(cfg?.period_end);if(!start||!end)return[];const out=[];let d=new Date(start.getFullYear(),start.getMonth(),1,12);while(d<=end){out.push(tbMonthKey(d));d=new Date(d.getFullYear(),d.getMonth()+1,1,12);}return out; }
+function tbRecurringForMonth(items,key){ const target=tbMonthDate(key);return(items??[]).filter(item=>{const due=tbParse(item.next_due_date);if(!due)return false;const diff=tbMonthDiff(new Date(due.getFullYear(),due.getMonth(),1,12),target);if(diff<0)return false;if(item.cadence==='monthly')return true;if(item.cadence==='quarterly')return diff%3===0;if(item.cadence==='yearly')return diff%12===0;return false;}).reduce((s,x)=>s+Number(x.amount||0),0); }
+function tbBaseRemaining(d){
+  const j=d?.japan_plan??{},cfg=j.budget??{},rate=Number(cfg.planning_rate?.jpy_nok||0),cats=cfg.living_categories??[];
+  if(!rate||!cats.length)return null;
+  const living=cats.reduce((s,x)=>s+Number(x.amount_jpy||0),0),dorm=Number(cfg.known_jpy?.dorm_monthly||j.dorm_monthly_jpy||0),entrance=Number(cfg.known_jpy?.entrance_fee||j.move_in_fee_jpy||0),deposit=Number(cfg.known_jpy?.deposit||j.deposit_jpy||0),months=tbMonths(cfg);
+  const japanCash=months.reduce((s,key,i)=>s+living+(i===months.length-1?0:dorm)+(i===0?entrance+deposit:0),0);
+  const recurring=months.reduce((s,key)=>s+tbRecurringForMonth(d.fixed_costs,key),0);
+  const arrival=tbParse(j.arrival_date);const beforeArrival=(d.upcoming??[]).filter(x=>x.event_type!=='income'&&arrival&&tbParse(x.event_date)&&tbParse(x.event_date)<arrival).reduce((s,x)=>s+Number(x.amount||0),0);
+  return Number(d.cost_summary?.liquid_non_savings||0)-beforeArrival-japanCash*rate-recurring;
+}
+function tbApplyBuffer(){
+  if(!tbDashboard)return;
+  const included=tbTrips.filter(x=>x.include_in_plan!==false),reserved=included.reduce((s,x)=>s+tbTotal(x),0),rate=Number(tbDashboard.japan_plan?.budget?.planning_rate?.jpy_nok||0),base=tbBaseRemaining(tbDashboard);
+  if(base===null||!rate)return;
+  const adjusted=base-reserved*rate;
+  const value=document.getElementById('jb-remaining'),copy=document.getElementById('jb-remaining-copy');
+  if(value)value.textContent=tbKr(adjusted);
+  if(copy)copy.textContent=`Konservativ rest etter hele baseplanen${reserved?`, ${tbYen(reserved)} reservert til egne turer`:''} og norske faste trekk. Ingen framtidig lønn er antatt, og poster uten kjent pris er fortsatt ikke trukket fra.`;
+}
 
 function tbEnsure(){
   const root=document.getElementById('japan-budget-v2');
@@ -65,6 +90,7 @@ function tbRender(){
     </button>`;
   }).join('');
   list.querySelectorAll('[data-trip]').forEach(b=>b.addEventListener('click',()=>tbOpen(b.dataset.trip)));
+  setTimeout(tbApplyBuffer,120);
 }
 function tbOpen(id=null){
   tbEditing=id?tbTrips.find(x=>String(x.id)===String(id)):null;
@@ -80,10 +106,14 @@ async function tbSave(e){
   e.preventDefault(); const error=document.getElementById('tb-error'); error.textContent='';
   const budgets=Object.fromEntries(['transport','stay','food','activities','other'].map(k=>[k,Number(document.getElementById(`tb-${k}`).value||0)]));
   const payload={id:tbEditing?.id,name:document.getElementById('tb-name').value,start_date:document.getElementById('tb-start').value,end_date:document.getElementById('tb-end').value,budgets,include_in_plan:document.getElementById('tb-include').checked};
-  try{const r=await fetch('/api/trips',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await r.json();if(!r.ok)throw new Error(body.error||'Kunne ikke lagre');tbTrips=body.trips??[];tbClose();tbRender();document.getElementById('refresh')?.click();}
+  try{const r=await fetch('/api/trips',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await r.json();if(!r.ok)throw new Error(body.error||'Kunne ikke lagre');tbTrips=body.trips??[];tbClose();await tbLoad();document.getElementById('refresh')?.click();}
   catch(err){error.textContent=err.message;}
 }
-async function tbDelete(){ if(!tbEditing)return; if(!confirm(`Slette ${tbEditing.name}?`))return; const r=await fetch(`/api/trips?id=${encodeURIComponent(tbEditing.id)}`,{method:'DELETE',credentials:'same-origin'});const body=await r.json().catch(()=>({}));if(r.ok){tbTrips=body.trips??[];tbClose();tbRender();document.getElementById('refresh')?.click();}else document.getElementById('tb-error').textContent=body.error||'Kunne ikke slette'; }
-async function tbLoad(){ if(tbLoading||!tbEnsure())return;const app=document.getElementById('app');if(!app||app.classList.contains('hidden'))return;tbLoading=true;try{const r=await fetch('/api/trips',{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;tbTrips=(await r.json()).trips??[];tbRender();}finally{tbLoading=false;} }
-function tbBoot(){const app=document.getElementById('app');const run=()=>{if(app&&!app.classList.contains('hidden'))setTimeout(tbLoad,300)};run();if(app)new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(tbLoad,700));}
+async function tbDelete(){ if(!tbEditing)return; if(!confirm(`Slette ${tbEditing.name}?`))return; const r=await fetch(`/api/trips?id=${encodeURIComponent(tbEditing.id)}`,{method:'DELETE',credentials:'same-origin'});const body=await r.json().catch(()=>({}));if(r.ok){tbTrips=body.trips??[];tbClose();await tbLoad();document.getElementById('refresh')?.click();}else document.getElementById('tb-error').textContent=body.error||'Kunne ikke slette'; }
+async function tbLoad(){
+  if(tbLoading||!tbEnsure())return;const app=document.getElementById('app');if(!app||app.classList.contains('hidden'))return;tbLoading=true;
+  try{const [tr,dr]=await Promise.all([fetch('/api/trips',{credentials:'same-origin',cache:'no-store'}),fetch('/api/dashboard',{credentials:'same-origin',cache:'no-store'})]);if(tr.ok)tbTrips=(await tr.json()).trips??[];if(dr.ok)tbDashboard=await dr.json();tbRender();}
+  finally{tbLoading=false;}
+}
+function tbBoot(){const app=document.getElementById('app');const run=()=>{if(app&&!app.classList.contains('hidden'))setTimeout(tbLoad,350)};run();if(app)new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(tbLoad,850));setTimeout(tbLoad,1200);}
 tbBoot();
