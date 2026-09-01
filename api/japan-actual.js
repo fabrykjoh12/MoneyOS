@@ -54,6 +54,25 @@ export default async function handler(req, res) {
       ORDER BY t.transaction_date DESC, t.id DESC
     `;
 
+    const walletLedger = Array.isArray(japan.wallets?.ledger) ? japan.wallets.ledger : [];
+    const walletExpenses = walletLedger
+      .filter(item => item?.type === 'expense' && item?.date >= periodStart && item?.date <= bounds.end)
+      .map(item => ({
+        id: `wallet-${item.id}`,
+        transaction_date: item.date,
+        amount_nok: null,
+        amount_jpy: Number(item.amount_jpy ?? 0),
+        merchant: item.note || 'Manuelt Japan-kjøp',
+        description: item.note || '',
+        category: null,
+        category_key: item.category_key || 'household',
+        account: item.wallet === 'icoca' ? 'ICOCA' : 'Kontanter',
+        source: 'wallet'
+      }));
+
+    const transactions = [...rows.map(row => ({ ...row, source: 'bank' })), ...walletExpenses]
+      .sort((a, b) => String(b.transaction_date).localeCompare(String(a.transaction_date)));
+
     return res.status(200).json({
       month,
       arrival_date: arrival,
@@ -61,7 +80,7 @@ export default async function handler(req, res) {
       period_end: bounds.end,
       planning_rate: budget.planning_rate ?? null,
       living_categories: budget.living_categories ?? [],
-      transactions: rows
+      transactions
     });
   } catch (error) {
     console.error(error);
