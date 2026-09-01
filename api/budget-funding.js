@@ -12,14 +12,17 @@ function defaultBucket(name){if(['Refusjoner og delte utgifter','Sparing'].inclu
 function validDate(v){const s=text(v,10);return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:null;}
 function fundContribution(fund,month){const target=money(fund?.target_amount_nok),saved=money(fund?.saved_nok),remaining=Math.max(0,target-saved);if(fund?.is_active===false||remaining<=0)return 0;if(fund?.monthly_nok!=null&&Number(fund.monthly_nok)>0)return money(fund.monthly_nok);const td=validDate(fund?.target_date);if(!td)return 0;const[y,m]=month.split('-').map(Number),[ty,tm]=td.slice(0,7).split('-').map(Number);const months=Math.max(1,(ty-y)*12+(tm-m)+1);return Math.ceil(remaining/months*100)/100;}
 async function configRow(sql){const rows=await sql`SELECT id,COALESCE(extracted_summary,'{}'::jsonb) AS summary FROM documents WHERE document_type='moneyos_config' AND source_name='MoneyOS private config' ORDER BY document_date DESC NULLS LAST,created_at DESC LIMIT 1`;return rows[0]??null;}
+async function latestSalary(sql){const rows=await sql`SELECT t.id::text AS id,t.transaction_date,ROUND(t.amount::numeric,2) AS amount,t.merchant,t.description FROM transactions t WHERE t.transaction_type='income' AND COALESCE(t.is_pending,false)=false AND lower(COALESCE(t.description,'')) LIKE '%lønn%' ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1`;return rows[0]??null;}
+async function salaryById(sql,id){const rows=await sql`SELECT t.id::text AS id,t.transaction_date,ROUND(t.amount::numeric,2) AS amount,t.merchant,t.description FROM transactions t WHERE t.id::text=${id} AND t.transaction_type='income' AND COALESCE(t.is_pending,false)=false AND lower(COALESCE(t.description,'')) LIKE '%lønn%' LIMIT 1`;return rows[0]??null;}
 
 async function buildMonth(sql,config,month){
   const categoriesRows=await sql`SELECT name FROM categories ORDER BY name`;
   const categories=categoriesRows.map(x=>x.name);
-  const [historyRows,recurringRows,dashboardRows]=await Promise.all([
+  const [historyRows,recurringRows,dashboardRows,salary]=await Promise.all([
     sql`SELECT extracted_summary->'monthly' AS monthly FROM documents WHERE extracted_summary ? 'monthly' ORDER BY document_date DESC NULLS LAST,created_at DESC LIMIT 1`,
     sql`SELECT r.name,r.amount,r.cadence,r.next_due_date,ROUND((CASE r.cadence WHEN 'daily' THEN r.amount*365.25/12 WHEN 'weekly' THEN r.amount*52/12 WHEN 'biweekly' THEN r.amount*26/12 WHEN 'monthly' THEN r.amount WHEN 'quarterly' THEN r.amount/3 WHEN 'yearly' THEN r.amount/12 ELSE r.amount END)::numeric,2) AS monthly_amount FROM recurring_items r WHERE r.item_type='expense' AND r.is_active=true`,
-    sql`SELECT finance_dashboard() AS dashboard`
+    sql`SELECT finance_dashboard() AS dashboard`,
+    latestSalary(sql)
   ]);
   const historical=historyRows[0]?.monthly??{};
   const historyMonths=Object.keys(historical).filter(k=>monthPattern.test(k)&&k<month).sort().reverse().slice(0,6);
@@ -50,13 +53,15 @@ async function buildMonth(sql,config,month){
   const dashboard=dashboardRows[0]?.dashboard??{};
   const safe=money(dashboard?.overview?.safe_to_spend);
   const available=Math.max(0,safe-allAllocated);
+  const incomeAllocations=system.funding?.income_allocations??{};
+  const latestSalaryInfo=salary?{id:String(salary.id),transaction_date:salary.transaction_date,amount_nok:money(salary.amount),merchant:salary.merchant??null,description:salary.description??null,already_allocated:!!incomeAllocations[String(salary.id)],allocation:incomeAllocations[String(salary.id)]??null}:null;
   const tiers={
     minimum:{goal_nok:money(minimum),funded_nok:Math.min(funded,minimum)},
     true_expenses:{goal_nok:money(sinking),funded_nok:Math.min(Math.max(0,funded-minimum),sinking)},
     savings:{goal_nok:money(savings),funded_nok:Math.min(Math.max(0,funded-robust),savings)},
     flex:{goal_nok:money(flex),funded_nok:Math.min(Math.max(0,funded-robust-savings),flex)}
   };
-  return{month,plan_saved:!!plan,planning_income_nok:planningIncome,fixed_nok:money(fixed),essential_nok:money(essential),sinking_nok:money(sinking),savings_nok:savings,flex_nok:money(flex),minimum_month_nok:money(minimum),robust_month_nok:money(robust),full_month_nok:money(full),funded_nok:funded,remaining_to_minimum_nok:money(Math.max(0,minimum-funded)),remaining_to_robust_nok:money(Math.max(0,robust-funded)),remaining_to_full_nok:money(Math.max(0,full-funded)),funded_percent_full:full>0?Math.min(100,Math.round(funded/full*1000)/10):0,tiers,available_to_allocate_nok:available,safe_to_spend_before_funding_nok:safe,total_future_funding_nok:money(allAllocated),category_detail,history_months_used:historyMonths};
+  return{month,plan_saved:!!plan,planning_income_nok:planningIncome,fixed_nok:money(fixed),essential_nok:money(essential),sinking_nok:money(sinking),savings_nok:savings,flex_nok:money(flex),minimum_month_nok:money(minimum),robust_month_nok:money(robust),full_month_nok:money(full),funded_nok:funded,remaining_to_minimum_nok:money(Math.max(0,minimum-funded)),remaining_to_robust_nok:money(Math.max(0,robust-funded)),remaining_to_full_nok:money(Math.max(0,full-funded)),funded_percent_full:full>0?Math.min(100,Math.round(funded/full*1000)/10):0,tiers,available_to_allocate_nok:available,safe_to_spend_before_funding_nok:safe,total_future_funding_nok:money(allAllocated),latest_salary:latestSalaryInfo,category_detail,history_months_used:historyMonths};
 }
 function previewAllocation(model,amount){
   let left=money(amount);const steps=[];
@@ -78,14 +83,16 @@ export default async function handler(req,res){
     }
     if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
     const action=text(req.body?.action,30);
-    const current=config.summary?.budget_system??{};const funding={...(current.funding??{}),allocations:{...(current.funding?.allocations??{})}};
+    const current=config.summary?.budget_system??{};const funding={...(current.funding??{}),allocations:{...(current.funding?.allocations??{})},income_allocations:{...(current.funding?.income_allocations??{})}};
     if(action==='set_funding'){
       const requested=money(req.body?.funded_nok);const existing=money(funding.allocations?.[month]?.funded_nok);const otherTotal=Object.entries(funding.allocations).filter(([k])=>k!==month).reduce((s,[,x])=>s+money(x?.funded_nok),0);const safe=money(model.safe_to_spend_before_funding_nok);const maxAllowed=Math.max(existing,Math.max(0,safe-otherTotal));if(requested>maxAllowed+0.01)return res.status(409).json({error:`Bare ${Math.round(maxAllowed)} kr kan reserveres uten å bruke penger MoneyOS allerede trenger.`});
       funding.allocations[month]={funded_nok:requested,updated_at:new Date().toISOString(),source:'manual'};
     }else if(action==='allocate_amount'){
       const amount=money(req.body?.amount_nok);if(amount<=0)return res.status(400).json({error:'Beløpet må være større enn 0'});const preview=previewAllocation(model,Math.min(amount,model.available_to_allocate_nok));const existing=money(funding.allocations?.[month]?.funded_nok);funding.allocations[month]={funded_nok:money(existing+preview.reserved_nok),updated_at:new Date().toISOString(),source:'priority_allocation'};
+    }else if(action==='allocate_salary'){
+      const transactionId=text(req.body?.transaction_id,128);if(!transactionId)return res.status(400).json({error:'Mangler lønnstransaksjon'});if(funding.income_allocations[transactionId])return res.status(409).json({error:'Denne lønnen er allerede fordelt i MoneyOS'});const salary=await salaryById(sql,transactionId);if(!salary)return res.status(404).json({error:'Fant ikke en bokført lønnsutbetaling'});const amount=Math.min(money(salary.amount),model.available_to_allocate_nok);const preview=previewAllocation(model,amount);if(preview.reserved_nok<=0)return res.status(409).json({error:'Ingen ledige penger kan reserveres til denne måneden nå'});const existing=money(funding.allocations?.[month]?.funded_nok);funding.allocations[month]={funded_nok:money(existing+preview.reserved_nok),updated_at:new Date().toISOString(),source:'salary_priority'};funding.income_allocations[transactionId]={target_month:month,salary_amount_nok:money(salary.amount),reserved_nok:preview.reserved_nok,left_unassigned_nok:money(money(salary.amount)-preview.reserved_nok),allocated_at:new Date().toISOString()};
     }else if(action==='clear_funding'){
-      delete funding.allocations[month];
+      delete funding.allocations[month];for(const[id,entry]of Object.entries(funding.income_allocations)){if(entry?.target_month===month)delete funding.income_allocations[id];}
     }else return res.status(400).json({error:'Ukjent handling'});
     const next={...current,version:Math.max(2,Number(current.version??1)),funding,updated_at:new Date().toISOString()};
     await sql`UPDATE documents SET extracted_summary=jsonb_set(COALESCE(extracted_summary,'{}'::jsonb),'{budget_system}',${JSON.stringify(next)}::jsonb,true) WHERE id=${config.id}`;
