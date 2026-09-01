@@ -2,6 +2,7 @@ const teMoney = new Intl.NumberFormat('nb-NO', { minimumFractionDigits: 0, maxim
 const teDate = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' });
 let teRows = [];
 let teCategories = [];
+let teRules = [];
 let teCurrent = null;
 let teLoading = false;
 
@@ -27,6 +28,15 @@ function teMerchant(raw, description=''){
   if(/telenor/.test(l)) return 'Telenor';
   return s || 'Transaksjon';
 }
+function teSuggestedMatch(row){
+  const raw=`${row?.merchant||''} ${row?.description||''}`.trim();
+  const known=[['rema','REMA'],['easypark','EasyPark'],['adobe','Adobe'],['anthropic','Anthropic'],['claude','Claude'],['openai','OpenAI'],['chatgpt','ChatGPT'],['youtube','YouTube'],['google one','Google One'],['supabase','Supabase'],['higgsfield','Higgsfield'],['meny','MENY'],['circle k','Circle K'],['telia','Telia'],['telenor','Telenor']];
+  const lower=raw.toLowerCase();
+  const hit=known.find(([needle])=>lower.includes(needle));
+  if(hit) return hit[1];
+  const token=raw.replace(/[^\p{L}\p{N} ]/gu,' ').split(/\s+/).find(x=>x.length>=4 && !/^\d+$/.test(x));
+  return token||'';
+}
 
 function teEnsureSheet(){
   if(document.getElementById('te-backdrop')) return;
@@ -41,6 +51,10 @@ function teEnsureSheet(){
       <label>Merchant<input id="te-merchant" maxlength="160" /></label>
       <label>Kategori<select id="te-category"></select></label>
       <label>Type<select id="te-type"><option value="expense">Utgift</option><option value="income">Inntekt</option><option value="transfer">Intern overføring</option></select></label>
+      <div class="te-rule-box">
+        <label class="te-check"><input id="te-remember" type="checkbox" /><span><strong>Husk denne regelen</strong><small>Rett andre og fremtidige transaksjoner med samme kjennetegn.</small></span></label>
+        <div id="te-match-wrap" class="te-match hidden"><label>Banktekst inneholder<input id="te-match" maxlength="120" /></label><p>Bruk et tydelig kjennetegn, f.eks. «REMA» eller «EasyPark». MoneyOS viser alltid teksten før regelen lagres.</p></div>
+      </div>
       <div class="te-raw"><span>Bankens råtekst</span><p id="te-description">—</p></div>
       <div class="te-actions"><button id="te-cancel" type="button">Avbryt</button><button id="te-save" type="submit">Lagre endring</button></div>
       <p id="te-error" class="te-error"></p>
@@ -49,9 +63,17 @@ function teEnsureSheet(){
   document.body.appendChild(el);
   document.getElementById('te-close')?.addEventListener('click',teClose);
   document.getElementById('te-cancel')?.addEventListener('click',teClose);
+  document.getElementById('te-remember')?.addEventListener('change',e=>document.getElementById('te-match-wrap')?.classList.toggle('hidden',!e.target.checked));
   el.addEventListener('click',e=>{if(e.target===el)teClose();});
   document.getElementById('te-form')?.addEventListener('submit',teSave);
   document.addEventListener('keydown',e=>{if(e.key==='Escape')teClose();});
+}
+
+function teToast(text){
+  let toast=document.getElementById('te-toast');
+  if(!toast){toast=document.createElement('div');toast.id='te-toast';toast.className='te-toast';document.body.appendChild(toast);}
+  toast.textContent=text; toast.classList.add('show');
+  clearTimeout(teToast.timer); teToast.timer=setTimeout(()=>toast.classList.remove('show'),3200);
 }
 
 async function teLoad(){
@@ -63,6 +85,7 @@ async function teLoad(){
     const body=await r.json();
     teRows=body.transactions??[];
     teCategories=body.categories??[];
+    teRules=body.merchant_rules??[];
     teRender();
   }finally{teLoading=false;}
 }
@@ -100,12 +123,16 @@ function teOpen(id){
   document.getElementById('te-type').value=teCurrent.transaction_type||'expense';
   document.getElementById('te-description').textContent=teCurrent.description||'Ingen råtekst';
   document.getElementById('te-error').textContent='';
+  const remember=document.getElementById('te-remember'); remember.checked=false;
+  document.getElementById('te-match').value=teSuggestedMatch(teCurrent);
+  document.getElementById('te-match-wrap').classList.add('hidden');
   const pending=!!teCurrent.is_pending;
   document.getElementById('te-pending').classList.toggle('hidden',!pending);
   document.getElementById('te-save').disabled=pending;
   document.getElementById('te-merchant').disabled=pending;
   document.getElementById('te-category').disabled=pending;
   document.getElementById('te-type').disabled=pending;
+  remember.disabled=pending;
   document.getElementById('te-backdrop').classList.remove('hidden');
   document.body.classList.add('sheet-open');
 }
@@ -117,11 +144,21 @@ async function teSave(e){
   const save=document.getElementById('te-save'); const error=document.getElementById('te-error');
   save.disabled=true; save.textContent='Lagrer…'; error.textContent='';
   try{
-    const payload={id:teCurrent.id,merchant:document.getElementById('te-merchant').value.trim(),category:document.getElementById('te-category').value,transaction_type:document.getElementById('te-type').value};
+    const remember=document.getElementById('te-remember').checked;
+    const payload={
+      id:teCurrent.id,
+      merchant:document.getElementById('te-merchant').value.trim(),
+      category:document.getElementById('te-category').value,
+      transaction_type:document.getElementById('te-type').value,
+      remember_rule:remember,
+      match_text:remember?document.getElementById('te-match').value.trim():''
+    };
     const r=await fetch('/api/transactions',{method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const body=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(body.error||'Kunne ikke lagre');
     teClose();
+    if(body.rule_saved) teToast(`Regelen er lagret · ${body.matched||1} bokførte transaksjoner oppdatert`);
+    else teToast('Transaksjonen er oppdatert');
     await teLoad();
     document.getElementById('refresh')?.click();
     setTimeout(teLoad,600);
