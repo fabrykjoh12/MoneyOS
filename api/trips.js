@@ -15,6 +15,13 @@ function validDate(value) {
   const s = text(value, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
+function exactJpy(description) {
+  const match = String(description ?? '').match(/\bJPY\s*([\d.,]+)/i);
+  if (!match) return null;
+  const token = match[1].replace(/([.,])00$/, '').replace(/[^\d]/g, '');
+  const value = Number(token);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
 
 async function getConfig(sql) {
   const rows = await sql`
@@ -25,6 +32,78 @@ async function getConfig(sql) {
     LIMIT 1
   `;
   return rows[0] ?? null;
+}
+
+async function withActuals(sql, config, trips) {
+  const map = config.summary?.trip_transaction_map && typeof config.summary.trip_transaction_map === 'object'
+    ? config.summary.trip_transaction_map
+    : {};
+  const rate = Number(config.summary?.japan?.budget?.planning_rate?.jpy_nok ?? 0);
+  const ids = Object.keys(map);
+  let transactionRows = [];
+  if (ids.length) {
+    transactionRows = await sql`
+      SELECT
+        t.id::text AS id,
+        t.transaction_date,
+        ROUND(t.amount::numeric, 2) AS amount_nok,
+        t.merchant,
+        t.description,
+        COALESCE(c.name, 'Annet') AS category,
+        a.name AS account
+      FROM transactions t
+      JOIN accounts a ON a.id = t.account_id
+      LEFT JOIN categories c ON c.id = t.category_id
+      WHERE t.transaction_type = 'expense'
+        AND COALESCE(t.is_pending, false) = false
+        AND t.id::text IN (SELECT jsonb_object_keys(${JSON.stringify(map)}::jsonb))
+      ORDER BY t.transaction_date DESC, t.id DESC
+    `;
+  }
+
+  const tx = transactionRows.map(row => {
+    const assignment = map[row.id] ?? {};
+    const exact = exactJpy(row.description);
+    const amountJpy = exact ?? (rate > 0 ? Number(row.amount_nok) / rate : 0);
+    return {
+      ...row,
+      trip_id: assignment.trip_id ?? null,
+      bucket: fields.includes(assignment.bucket) ? assignment.bucket : 'other',
+      amount_jpy: Math.round(amountJpy),
+      jpy_source: exact != null ? 'bank' : 'planning_rate'
+    };
+  });
+
+  const walletLedger = Array.isArray(config.summary?.japan?.wallets?.ledger) ? config.summary.japan.wallets.ledger : [];
+  const walletTripExpenses = walletLedger.filter(entry => entry?.type === 'expense' && entry?.trip_id && fields.includes(entry?.trip_bucket)).map(entry => ({
+    id: `wallet:${entry.id}`,
+    transaction_date: entry.date,
+    amount_nok: null,
+    merchant: entry.note || 'Japan-lommebok',
+    description: entry.note || '',
+    category: 'Japan-lommebok',
+    account: entry.wallet === 'icoca' ? 'ICOCA' : 'Kontanter',
+    trip_id: entry.trip_id,
+    bucket: entry.trip_bucket,
+    amount_jpy: Math.round(Number(entry.amount_jpy ?? 0)),
+    jpy_source: 'wallet'
+  }));
+  const allTx = [...tx, ...walletTripExpenses];
+
+  return trips.map(trip => {
+    const relevant = allTx.filter(row => String(row.trip_id) === String(trip.id));
+    const actuals = Object.fromEntries(fields.map(field => [field, relevant.filter(row => row.bucket === field).reduce((sum, row) => sum + Number(row.amount_jpy || 0), 0)]));
+    const budgetTotal = fields.reduce((sum, field) => sum + Number(trip.budgets?.[field] || 0), 0);
+    const actualTotal = fields.reduce((sum, field) => sum + Number(actuals[field] || 0), 0);
+    return {
+      ...trip,
+      actuals,
+      actual_total_jpy: Math.round(actualTotal),
+      budget_total_jpy: Math.round(budgetTotal),
+      remaining_jpy: Math.round(budgetTotal - actualTotal),
+      transactions: relevant
+    };
+  });
 }
 
 export default async function handler(req, res) {
@@ -39,7 +118,9 @@ export default async function handler(req, res) {
     const japan = config.summary?.japan ?? {};
     const trips = Array.isArray(japan.trips) ? japan.trips : [];
 
-    if (req.method === 'GET') return res.status(200).json({ trips });
+    if (req.method === 'GET') {
+      return res.status(200).json({ trips: await withActuals(sql, config, trips) });
+    }
 
     if (req.method === 'POST') {
       const id = text(req.body?.id, 80) || randomUUID();
@@ -65,19 +146,22 @@ export default async function handler(req, res) {
         SET extracted_summary = jsonb_set(COALESCE(extracted_summary, '{}'::jsonb), '{japan,trips}', ${JSON.stringify(next)}::jsonb, true)
         WHERE id = ${config.id}
       `;
-      return res.status(200).json({ ok: true, trip, trips: next });
+      return res.status(200).json({ ok: true, trip, trips: await withActuals(sql, { ...config, summary: { ...config.summary, japan: { ...japan, trips: next } } }, next) });
     }
 
     if (req.method === 'DELETE') {
       const id = text(req.query?.id, 80);
       if (!id) return res.status(400).json({ error: 'Mangler tur-ID' });
       const next = trips.filter(item => String(item?.id) !== id);
+      const oldMap = config.summary?.trip_transaction_map && typeof config.summary.trip_transaction_map === 'object' ? config.summary.trip_transaction_map : {};
+      const nextMap = Object.fromEntries(Object.entries(oldMap).filter(([, assignment]) => String(assignment?.trip_id) !== id));
+      const nextSummary = { ...config.summary, japan: { ...japan, trips: next }, trip_transaction_map: nextMap };
       await sql`
         UPDATE documents
-        SET extracted_summary = jsonb_set(COALESCE(extracted_summary, '{}'::jsonb), '{japan,trips}', ${JSON.stringify(next)}::jsonb, true)
+        SET extracted_summary = ${JSON.stringify(nextSummary)}::jsonb
         WHERE id = ${config.id}
       `;
-      return res.status(200).json({ ok: true, trips: next });
+      return res.status(200).json({ ok: true, trips: await withActuals(sql, { ...config, summary: nextSummary }, next) });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
