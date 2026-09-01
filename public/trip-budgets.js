@@ -17,6 +17,7 @@ function tbMonthDate(key){ const [y,m]=String(key).split('-').map(Number); retur
 function tbMonthDiff(a,b){ return (b.getFullYear()-a.getFullYear())*12+(b.getMonth()-a.getMonth()); }
 function tbMonths(cfg){ const start=tbParse(cfg?.period_start),end=tbParse(cfg?.period_end);if(!start||!end)return[];const out=[];let d=new Date(start.getFullYear(),start.getMonth(),1,12);while(d<=end){out.push(tbMonthKey(d));d=new Date(d.getFullYear(),d.getMonth()+1,1,12);}return out; }
 function tbRecurringForMonth(items,key){ const target=tbMonthDate(key);return(items??[]).filter(item=>{const due=tbParse(item.next_due_date);if(!due)return false;const diff=tbMonthDiff(new Date(due.getFullYear(),due.getMonth(),1,12),target);if(diff<0)return false;if(item.cadence==='monthly')return true;if(item.cadence==='quarterly')return diff%3===0;if(item.cadence==='yearly')return diff%12===0;return false;}).reduce((s,x)=>s+Number(x.amount||0),0); }
+function tbOneTimeNok(j,rate){return(Array.isArray(j?.one_time_costs)?j.one_time_costs:[]).filter(x=>['budget','confirmed'].includes(x?.status)).reduce((s,x)=>s+Number(x.amount||0)*(x.currency==='JPY'?rate:1),0)}
 function tbBaseRemaining(d){
   const j=d?.japan_plan??{},cfg=j.budget??{},rate=Number(cfg.planning_rate?.jpy_nok||0),cats=cfg.living_categories??[];
   if(!rate||!cats.length)return null;
@@ -24,7 +25,7 @@ function tbBaseRemaining(d){
   const japanCash=months.reduce((s,key,i)=>s+living+(i===months.length-1?0:dorm)+(i===0?entrance+deposit:0),0);
   const recurring=months.reduce((s,key)=>s+tbRecurringForMonth(d.fixed_costs,key),0);
   const arrival=tbParse(j.arrival_date);const beforeArrival=(d.upcoming??[]).filter(x=>x.event_type!=='income'&&arrival&&tbParse(x.event_date)&&tbParse(x.event_date)<arrival).reduce((s,x)=>s+Number(x.amount||0),0);
-  return Number(d.cost_summary?.liquid_non_savings||0)-beforeArrival-japanCash*rate-recurring;
+  return Number(d.cost_summary?.liquid_non_savings||0)-beforeArrival-japanCash*rate-recurring-tbOneTimeNok(j,rate);
 }
 function tbApplyBuffer(){
   if(!tbDashboard)return;
@@ -33,7 +34,7 @@ function tbApplyBuffer(){
   const adjusted=base-reserved*rate;
   const value=document.getElementById('jb-remaining'),copy=document.getElementById('jb-remaining-copy');
   if(value)value.textContent=tbKr(adjusted);
-  if(copy)copy.textContent=`Konservativ rest etter hele baseplanen${reserved?`, ${tbYen(reserved)} reservert til egne turer`:''} og norske faste trekk. Ingen framtidig lønn er antatt, og poster uten kjent pris er fortsatt ikke trukket fra.`;
+  if(copy)copy.textContent=`Konservativ rest etter hele prisede baseplanen${reserved?`, ${tbYen(reserved)} reservert til egne turer`:''} og norske faste trekk. Ingen framtidig lønn er antatt, og poster uten kjent pris er fortsatt ikke trukket fra.`;
 }
 
 function tbEnsure(){
