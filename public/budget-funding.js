@@ -1,5 +1,6 @@
 const bfMoney=new Intl.NumberFormat('nb-NO',{maximumFractionDigits:0});
 const bfMonthFmt=new Intl.DateTimeFormat('nb-NO',{month:'long',year:'numeric'});
+const bfDateFmt=new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short'});
 let bfData=null,bfLoading=false,bfTarget=null,bfPreview=null;
 function bfN(v){return Number(v??0)}
 function bfKr(v){return `${bfMoney.format(bfN(v))} kr`}
@@ -7,6 +8,7 @@ function bfEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'
 function bfMonthKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
 function bfNextMonth(){const d=new Date();return bfMonthKey(new Date(d.getFullYear(),d.getMonth()+1,1,12))}
 function bfMonthDate(key){const[y,m]=String(key).split('-').map(Number);return new Date(y,m-1,1,12)}
+function bfDate(v){return v?new Date(`${String(v).slice(0,10)}T12:00:00`):null}
 function bfTitle(s){return s?s[0].toUpperCase()+s.slice(1):s}
 function bfPct(a,b){return b>0?Math.min(100,Math.max(0,a/b*100)):0}
 function bfEnsure(){
@@ -26,7 +28,7 @@ function bfEnsure(){
     </div>
     <div class="bf-split">
       <article class="bf-card bf-min-card"><div><p class="panel-kicker">MINIMUMSMÅNED</p><h3>Hvor lite trenger måneden egentlig?</h3><p>Dette er gulvet: ingen shopping-/restaurantpott, men faste regninger og nødvendige kategorier er dekket.</p></div><div class="bf-min-breakdown"><div><span>Faste</span><strong id="bf-min-fixed">—</strong></div><div><span>Nødvendig</span><strong id="bf-min-essential">—</strong></div><div class="total"><span>Minimum</span><strong id="bf-min-total">—</strong></div></div></article>
-      <article class="bf-card"><div class="bf-card-head"><div><p class="panel-kicker">FORDEL PENGER</p><h3>Hva skal neste inntekt gjøre?</h3><p>Skriv et beløp. MoneyOS fordeler det i prioritert rekkefølge uten å endre noe før du godkjenner.</p></div></div><form id="bf-form" class="bf-form"><div class="bf-amount"><input id="bf-amount" type="number" min="1" step="100" placeholder="F.eks. 25000"><span>kr</span></div><button type="submit">Vis fordeling</button></form><div id="bf-preview" class="bf-preview hidden"></div></article>
+      <article class="bf-card"><div class="bf-card-head"><div><p class="panel-kicker">FORDEL PENGER</p><h3>Hva skal neste inntekt gjøre?</h3><p>Bokført lønn kan fordeles direkte. Andre beløp kan testes manuelt før du reserverer dem.</p></div></div><div id="bf-salary" class="bf-salary hidden"></div><form id="bf-form" class="bf-form"><div class="bf-amount"><input id="bf-amount" type="number" min="1" step="100" placeholder="F.eks. 25000"><span>kr</span></div><button type="submit">Vis fordeling</button></form><div id="bf-preview" class="bf-preview hidden"></div></article>
     </div>
     <div class="bf-actions"><button id="bf-clear" type="button">Frigi reservering</button><p>Reservering er regnskapsmessig i MoneyOS. Ingen bankoverføring opprettes.</p></div>`;
   budget.insertAdjacentElement('afterend',el);
@@ -43,6 +45,14 @@ function bfEnsureHome(){
   anchor.insertAdjacentElement('beforebegin',el);el.querySelector('button').addEventListener('click',()=>{document.querySelector('[data-view="money"]')?.click();setTimeout(()=>document.getElementById('budget-funding')?.scrollIntoView({behavior:'smooth',block:'start'}),150)});return true;
 }
 function bfStatus(funded,goal){const left=Math.max(0,goal-funded);return left<=0?'Fullfinansiert':`${bfKr(left)} mangler`;}
+function bfRenderSalary(d){
+  const root=document.getElementById('bf-salary');if(!root)return;const s=d.latest_salary;if(!s){root.classList.add('hidden');return}root.classList.remove('hidden');
+  const when=bfDate(s.transaction_date);const date=when?bfDateFmt.format(when):'';
+  if(s.already_allocated){root.innerHTML=`<div><span>SISTE BOKFØRTE LØNN · ${bfEsc(date)}</span><strong>${bfKr(s.amount_nok)}</strong><small>Allerede fordelt til ${bfTitle(bfMonthFmt.format(bfMonthDate(s.allocation?.target_month||d.month)))}.</small></div><b>Fordelt</b>`;return}
+  const disabled=d.available_to_allocate_nok<=0||d.remaining_to_full_nok<=0;
+  root.innerHTML=`<div><span>SISTE BOKFØRTE LØNN · ${bfEsc(date)}</span><strong>${bfKr(s.amount_nok)}</strong><small>${bfEsc(s.merchant||'Lønn')} · bruker bare penger som fortsatt er ledige i MoneyOS.</small></div><button id="bf-use-salary" type="button"${disabled?' disabled':''}>${d.remaining_to_full_nok<=0?'Måneden er fullfinansiert':'Fordel lønnen'}</button>`;
+  document.getElementById('bf-use-salary')?.addEventListener('click',()=>bfAllocateSalary(s.id));
+}
 function bfRender(){
   if(!bfData||!bfEnsure())return;bfEnsureHome();const d=bfData;const pct=bfPct(d.funded_nok,d.full_month_nok);
   document.getElementById('bf-month').value=d.month;document.getElementById('bf-month-label').textContent=bfTitle(bfMonthFmt.format(bfMonthDate(d.month))).toUpperCase();
@@ -52,7 +62,7 @@ function bfRender(){
   document.getElementById('bf-minimum').textContent=bfKr(d.minimum_month_nok);document.getElementById('bf-robust').textContent=bfKr(d.robust_month_nok);document.getElementById('bf-full-level').textContent=bfKr(d.full_month_nok);
   document.getElementById('bf-min-status').textContent=bfStatus(d.funded_nok,d.minimum_month_nok);document.getElementById('bf-robust-status').textContent=bfStatus(d.funded_nok,d.robust_month_nok);document.getElementById('bf-full-status').textContent=bfStatus(d.funded_nok,d.full_month_nok);
   document.getElementById('bf-min-fixed').textContent=bfKr(d.fixed_nok);document.getElementById('bf-min-essential').textContent=bfKr(d.essential_nok);document.getElementById('bf-min-total').textContent=bfKr(d.minimum_month_nok);
-  const clear=document.getElementById('bf-clear');if(clear)clear.disabled=d.funded_nok<=0;
+  const clear=document.getElementById('bf-clear');if(clear)clear.disabled=d.funded_nok<=0;bfRenderSalary(d);
   const ht=document.getElementById('bf-home-title'),hc=document.getElementById('bf-home-copy');if(ht)ht.textContent=d.full_month_nok>0?`${Math.round(pct)}% av ${bfTitle(bfMonthFmt.format(bfMonthDate(d.month)))} finansiert`:`${bfTitle(bfMonthFmt.format(bfMonthDate(d.month)))} er ikke planlagt ennå`;if(hc)hc.textContent=d.funded_nok>=d.minimum_month_nok&&d.minimum_month_nok>0?`Minimumsmåneden på ${bfKr(d.minimum_month_nok)} er dekket. ${bfKr(d.remaining_to_full_nok)} gjenstår til full plan.`:`${bfKr(d.remaining_to_minimum_nok)} mangler for å dekke minimumsmåneden.`;
   if(bfPreview)bfRenderPreview(bfPreview);
 }
@@ -61,6 +71,7 @@ function bfRenderPreview(preview){
 }
 async function bfPreviewAmount(){const amount=bfN(document.getElementById('bf-amount').value);if(amount<=0)return;const r=await fetch(`/api/budget-funding?month=${encodeURIComponent(bfTarget||bfNextMonth())}&amount_nok=${encodeURIComponent(amount)}`,{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;const body=await r.json();bfData=body;bfPreview=body.allocation_preview;bfRender();}
 async function bfApply(amount){const btn=document.getElementById('bf-apply');if(btn){btn.disabled=true;btn.textContent='Reserverer…'}try{const r=await fetch('/api/budget-funding',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'allocate_amount',month:bfTarget||bfNextMonth(),amount_nok:amount})});const body=await r.json();if(!r.ok)throw new Error(body.error||'Kunne ikke reservere');bfData=body;bfPreview=null;document.getElementById('bf-amount').value='';document.getElementById('bf-preview').classList.add('hidden');bfRender();document.getElementById('refresh')?.click();setTimeout(()=>bfLoad(true),650)}catch(err){if(btn){btn.disabled=false;btn.textContent=err.message}}}
+async function bfAllocateSalary(id){const btn=document.getElementById('bf-use-salary');if(btn){btn.disabled=true;btn.textContent='Fordeler…'}try{const r=await fetch('/api/budget-funding',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'allocate_salary',month:bfTarget||bfNextMonth(),transaction_id:id})});const body=await r.json();if(!r.ok)throw new Error(body.error||'Kunne ikke fordele lønnen');bfData=body;bfPreview=null;bfRender();document.getElementById('refresh')?.click();setTimeout(()=>bfLoad(true),650)}catch(err){if(btn){btn.disabled=false;btn.textContent=err.message}}}
 async function bfClear(){if(!bfData||bfData.funded_nok<=0)return;if(!confirm(`Frigi ${bfKr(bfData.funded_nok)} som er reservert til ${bfTitle(bfMonthFmt.format(bfMonthDate(bfData.month)))}?`))return;const r=await fetch('/api/budget-funding',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'clear_funding',month:bfData.month})});if(r.ok){bfData=await r.json();bfPreview=null;bfRender();document.getElementById('refresh')?.click();setTimeout(()=>bfLoad(true),650)}}
 async function bfLoad(force=false){if(bfLoading)return;const app=document.getElementById('app');if(!app||app.classList.contains('hidden'))return;if(!bfTarget)bfTarget=bfNextMonth();bfLoading=true;try{for(let i=0;i<20&&!bfEnsure();i++)await new Promise(r=>setTimeout(r,80));const r=await fetch(`/api/budget-funding?month=${encodeURIComponent(bfTarget)}`,{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;bfData=await r.json();bfPreview=null;bfRender()}finally{bfLoading=false}}
 function bfBoot(){const app=document.getElementById('app');const run=()=>{if(app&&!app.classList.contains('hidden'))setTimeout(()=>bfLoad(),500)};run();if(app)new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(()=>bfLoad(true),900));setTimeout(()=>bfLoad(),1600)}
