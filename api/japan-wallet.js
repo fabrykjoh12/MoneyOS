@@ -4,6 +4,7 @@ import { isAuthenticated } from '../lib/auth.js';
 
 const walletNames = ['cash', 'icoca'];
 const categoryKeys = ['food','mobile','nhi','transport','household','social','trips','study','bank'];
+const tripBuckets = ['transport','stay','food','activities','other'];
 function n(value){ const x=Number(value); return Number.isFinite(x)?Math.round(x):0; }
 function text(value,max=120){ return String(value??'').trim().slice(0,max); }
 function dateValue(value){ const s=text(value,10); return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:new Date().toISOString().slice(0,10); }
@@ -25,6 +26,10 @@ function normalizeWallet(raw={}){
     ledger:Array.isArray(raw.ledger)?raw.ledger.slice(0,500):[]
   };
 }
+function publicTrips(summary){
+  const trips=Array.isArray(summary?.japan?.trips)?summary.japan.trips:[];
+  return trips.map(t=>({id:t.id,name:t.name,start_date:t.start_date,end_date:t.end_date}));
+}
 
 export default async function handler(req,res){
   res.setHeader('Cache-Control','private, no-store, max-age=0');
@@ -35,7 +40,8 @@ export default async function handler(req,res){
     const sql=neon(process.env.DATABASE_URL); const config=await configRow(sql);
     if(!config) return res.status(500).json({error:'MoneyOS-konfigurasjonen mangler'});
     const wallet=normalizeWallet(config.summary?.japan?.wallets);
-    if(req.method==='GET') return res.status(200).json(wallet);
+    const trips=publicTrips(config.summary);
+    if(req.method==='GET') return res.status(200).json({...wallet,trips});
     if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
 
     const action=text(req.body?.action,30), amount=Math.max(0,n(req.body?.amount_jpy));
@@ -56,8 +62,12 @@ export default async function handler(req,res){
     }else if(action==='expense'){
       const which=text(req.body?.wallet,10),category=text(req.body?.category_key,20); if(!walletNames.includes(which)||!categoryKeys.includes(category)||amount<=0) return res.status(400).json({error:'Ugyldig kjøp'});
       if(wallet[`${which}_jpy`]<amount) return res.status(409).json({error:'Ikke nok saldo i lommeboken'});
+      const tripId=text(req.body?.trip_id,80)||null;
+      const tripBucket=tripId?text(req.body?.trip_bucket,20):null;
+      if(tripId&&!trips.some(t=>String(t.id)===tripId)) return res.status(400).json({error:'Turen finnes ikke'});
+      if(tripId&&!tripBuckets.includes(tripBucket)) return res.status(400).json({error:'Velg hvilken turpost kjøpet tilhører'});
       wallet[`${which}_jpy`]-=amount;
-      wallet.ledger.unshift({...entryBase,type:'expense',wallet:which,amount_jpy:amount,category_key:category,note:text(req.body?.note,120)||'Kontantkjøp'});
+      wallet.ledger.unshift({...entryBase,type:'expense',wallet:which,amount_jpy:amount,category_key:category,note:text(req.body?.note,120)||'Kontantkjøp',trip_id:tripId,trip_bucket:tripBucket});
     }else return res.status(400).json({error:'Ukjent handling'});
 
     wallet.ledger=wallet.ledger.slice(0,500);
@@ -66,6 +76,6 @@ export default async function handler(req,res){
       SET extracted_summary=jsonb_set(COALESCE(extracted_summary,'{}'::jsonb),'{japan,wallets}',${JSON.stringify(wallet)}::jsonb,true)
       WHERE id=${config.id}
     `;
-    return res.status(200).json({ok:true,...wallet});
+    return res.status(200).json({ok:true,...wallet,trips});
   }catch(error){console.error(error);return res.status(500).json({error:'Kunne ikke oppdatere Japan-lommeboken'});}
 }
