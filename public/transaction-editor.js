@@ -3,12 +3,15 @@ const teDate = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short'
 let teRows = [];
 let teCategories = [];
 let teRules = [];
+let teTrips = [];
 let teCurrent = null;
 let teLoading = false;
+const teTripLabels = { transport:'Transport', stay:'Overnatting', food:'Mat', activities:'Aktiviteter', other:'Shopping / annet' };
 
 function teEsc(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function teKr(v){ return `${teMoney.format(Number(v ?? 0))} kr`; }
 function teInitials(v){ const s=String(v||'').trim(); if(!s) return '•'; const p=s.split(/\s+/); return (p.length===1?p[0].slice(0,2):p[0][0]+p[p.length-1][0]).toUpperCase(); }
+function teTripName(id){ return teTrips.find(x=>String(x.id)===String(id))?.name || ''; }
 function teMerchant(raw, description=''){
   const s=String(raw || description || '').trim();
   const l=s.toLowerCase();
@@ -51,6 +54,11 @@ function teEnsureSheet(){
       <label>Merchant<input id="te-merchant" maxlength="160" /></label>
       <label>Kategori<select id="te-category"></select></label>
       <label>Type<select id="te-type"><option value="expense">Utgift</option><option value="income">Inntekt</option><option value="transfer">Intern overføring</option></select></label>
+      <div class="te-trip-box">
+        <label>Tur <select id="te-trip"><option value="">Ikke en turkostnad</option></select></label>
+        <label id="te-trip-bucket-wrap" class="hidden">Turpost <select id="te-trip-bucket">${Object.entries(teTripLabels).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label>
+        <p>Kun eksplisitt tilknyttede kjøp teller i et turregnskap. Et abonnement som trekkes mens du er på tur blir derfor ikke feilaktig med.</p>
+      </div>
       <div class="te-rule-box">
         <label class="te-check"><input id="te-remember" type="checkbox" /><span><strong>Husk denne regelen</strong><small>Rett andre og fremtidige transaksjoner med samme kjennetegn.</small></span></label>
         <div id="te-match-wrap" class="te-match hidden"><label>Banktekst inneholder<input id="te-match" maxlength="120" /></label><p>Bruk et tydelig kjennetegn, f.eks. «REMA» eller «EasyPark». MoneyOS viser alltid teksten før regelen lagres.</p></div>
@@ -64,9 +72,24 @@ function teEnsureSheet(){
   document.getElementById('te-close')?.addEventListener('click',teClose);
   document.getElementById('te-cancel')?.addEventListener('click',teClose);
   document.getElementById('te-remember')?.addEventListener('change',e=>document.getElementById('te-match-wrap')?.classList.toggle('hidden',!e.target.checked));
+  document.getElementById('te-trip')?.addEventListener('change',teUpdateTripFields);
+  document.getElementById('te-type')?.addEventListener('change',teUpdateTripFields);
   el.addEventListener('click',e=>{if(e.target===el)teClose();});
   document.getElementById('te-form')?.addEventListener('submit',teSave);
   document.addEventListener('keydown',e=>{if(e.key==='Escape')teClose();});
+}
+function teUpdateTripFields(){
+  const type=document.getElementById('te-type')?.value;
+  const trip=document.getElementById('te-trip');
+  const wrap=document.getElementById('te-trip-bucket-wrap');
+  if(type!=='expense'){
+    if(trip) trip.value='';
+    if(trip) trip.disabled=true;
+    wrap?.classList.add('hidden');
+  }else{
+    if(trip) trip.disabled=!!teCurrent?.is_pending;
+    wrap?.classList.toggle('hidden',!trip?.value);
+  }
 }
 
 function teToast(text){
@@ -80,12 +103,13 @@ async function teLoad(){
   if(teLoading) return;
   teLoading=true;
   try{
-    const r=await fetch('/api/transactions?limit=120',{credentials:'same-origin',cache:'no-store'});
+    const r=await fetch('/api/transactions?limit=200',{credentials:'same-origin',cache:'no-store'});
     if(!r.ok) return;
     const body=await r.json();
     teRows=body.transactions??[];
     teCategories=body.categories??[];
     teRules=body.merchant_rules??[];
+    teTrips=body.trips??[];
     teRender();
   }finally{teLoading=false;}
 }
@@ -95,15 +119,16 @@ function teRender(){
   if(!root||!teRows.length) return;
   const input=document.getElementById('money-search');
   const q=String(input?.value||'').trim().toLowerCase();
-  const rows=q?teRows.filter(x=>[x.merchant,x.description,x.category,x.account,teMerchant(x.merchant,x.description)].some(v=>String(v??'').toLowerCase().includes(q))):teRows;
+  const rows=q?teRows.filter(x=>[x.merchant,x.description,x.category,x.account,teMerchant(x.merchant,x.description),teTripName(x.trip_id)].some(v=>String(v??'').toLowerCase().includes(q))):teRows;
   const count=document.getElementById('transaction-count'); if(count) count.textContent=`${rows.length} vist`;
   root.innerHTML=rows.map(x=>{
     const label=teMerchant(x.merchant,x.description);
     const sign=x.transaction_type==='income'?'+':x.transaction_type==='transfer'?'↔ ':'−';
+    const trip=x.trip_id?` · ${teEsc(teTripName(x.trip_id))}`:'';
     return `<button class="transaction-row te-row" data-te-id="${teEsc(x.id)}" type="button">
       <div class="transaction-date">${teDate.format(new Date(`${String(x.transaction_date).slice(0,10)}T12:00:00`)).replace(/\.\s?/g,' ')}</div>
       <div class="merchant-mark">${teEsc(teInitials(label))}</div>
-      <div><div class="row-title">${teEsc(label)}</div><div class="row-sub">${teEsc(x.category||'Annet')} · ${teEsc(x.account||'')}${x.is_pending?' · Reservert':''}</div></div>
+      <div><div class="row-title">${teEsc(label)}</div><div class="row-sub">${teEsc(x.category||'Annet')} · ${teEsc(x.account||'')}${x.is_pending?' · Reservert':''}${trip}</div></div>
       <div class="amount ${teEsc(x.transaction_type)}">${sign}${teKr(x.amount)}</div>
     </button>`;
   }).join('') || '<div class="row-sub">Ingen treff.</div>';
@@ -121,6 +146,9 @@ function teOpen(id){
   const select=document.getElementById('te-category');
   select.innerHTML=teCategories.map(c=>`<option value="${teEsc(c)}"${c===teCurrent.category?' selected':''}>${teEsc(c)}</option>`).join('');
   document.getElementById('te-type').value=teCurrent.transaction_type||'expense';
+  const trip=document.getElementById('te-trip');
+  trip.innerHTML=`<option value="">Ikke en turkostnad</option>${teTrips.map(t=>`<option value="${teEsc(t.id)}"${String(t.id)===String(teCurrent.trip_id)?' selected':''}>${teEsc(t.name)}</option>`).join('')}`;
+  document.getElementById('te-trip-bucket').value=teCurrent.trip_bucket || 'other';
   document.getElementById('te-description').textContent=teCurrent.description||'Ingen råtekst';
   document.getElementById('te-error').textContent='';
   const remember=document.getElementById('te-remember'); remember.checked=false;
@@ -133,6 +161,8 @@ function teOpen(id){
   document.getElementById('te-category').disabled=pending;
   document.getElementById('te-type').disabled=pending;
   remember.disabled=pending;
+  teUpdateTripFields();
+  document.getElementById('te-trip-bucket').disabled=pending;
   document.getElementById('te-backdrop').classList.remove('hidden');
   document.body.classList.add('sheet-open');
 }
@@ -145,20 +175,23 @@ async function teSave(e){
   save.disabled=true; save.textContent='Lagrer…'; error.textContent='';
   try{
     const remember=document.getElementById('te-remember').checked;
+    const tripId=document.getElementById('te-trip').value || null;
     const payload={
       id:teCurrent.id,
       merchant:document.getElementById('te-merchant').value.trim(),
       category:document.getElementById('te-category').value,
       transaction_type:document.getElementById('te-type').value,
       remember_rule:remember,
-      match_text:remember?document.getElementById('te-match').value.trim():''
+      match_text:remember?document.getElementById('te-match').value.trim():'',
+      trip_id:tripId,
+      trip_bucket:tripId?document.getElementById('te-trip-bucket').value:null
     };
     const r=await fetch('/api/transactions',{method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const body=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(body.error||'Kunne ikke lagre');
     teClose();
     if(body.rule_saved) teToast(`Regelen er lagret · ${body.matched||1} bokførte transaksjoner oppdatert`);
-    else teToast('Transaksjonen er oppdatert');
+    else teToast(tripId?'Transaksjonen er oppdatert og knyttet til turen':'Transaksjonen er oppdatert');
     await teLoad();
     document.getElementById('refresh')?.click();
     setTimeout(teLoad,600);
@@ -174,6 +207,11 @@ function teBoot(){
   if(app)new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});
   document.getElementById('money-search')?.addEventListener('input',()=>setTimeout(teRender,0));
   document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(teLoad,650));
+  document.addEventListener('moneyos:open-transaction',async e=>{
+    const id=String(e.detail?.id||''); if(!id)return;
+    if(!teRows.some(x=>String(x.id)===id)) await teLoad();
+    if(teRows.some(x=>String(x.id)===id)) teOpen(id);
+  });
 }
 
 teBoot();
