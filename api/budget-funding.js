@@ -49,7 +49,9 @@ async function buildMonth(sql,config,month){
   const full=robust+savings+flex;
   const funding=system.funding?.allocations??{};
   const funded=money(funding?.[month]?.funded_nok);
-  const allAllocated=Object.values(funding).reduce((s,x)=>s+money(x?.funded_nok),0);
+  const currentMonth=new Date().toISOString().slice(0,7);
+  const activeFunding=Object.entries(funding).filter(([key])=>monthPattern.test(key)&&key>=currentMonth);
+  const allAllocated=activeFunding.reduce((s,[,x])=>s+money(x?.funded_nok),0);
   const dashboard=dashboardRows[0]?.dashboard??{};
   const safe=money(dashboard?.overview?.safe_to_spend);
   const available=Math.max(0,safe-allAllocated);
@@ -79,13 +81,13 @@ export default async function handler(req,res){
     const nowMonth=new Date().toISOString().slice(0,7);const month=monthOr(req.method==='GET'?req.query?.month:req.body?.month,nextMonth(nowMonth));
     const model=await buildMonth(sql,config,month);
     if(req.method==='GET'){
-      const amount=money(req.query?.amount_nok);return res.status(200).json({...model,allocation_preview:amount>0?previewAllocation(model,amount):null});
+      const amount=Math.min(money(req.query?.amount_nok),model.available_to_allocate_nok);return res.status(200).json({...model,allocation_preview:amount>0?previewAllocation(model,amount):null});
     }
     if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
     const action=text(req.body?.action,30);
     const current=config.summary?.budget_system??{};const funding={...(current.funding??{}),allocations:{...(current.funding?.allocations??{})},income_allocations:{...(current.funding?.income_allocations??{})}};
     if(action==='set_funding'){
-      const requested=money(req.body?.funded_nok);const existing=money(funding.allocations?.[month]?.funded_nok);const otherTotal=Object.entries(funding.allocations).filter(([k])=>k!==month).reduce((s,[,x])=>s+money(x?.funded_nok),0);const safe=money(model.safe_to_spend_before_funding_nok);const maxAllowed=Math.max(existing,Math.max(0,safe-otherTotal));if(requested>maxAllowed+0.01)return res.status(409).json({error:`Bare ${Math.round(maxAllowed)} kr kan reserveres uten å bruke penger MoneyOS allerede trenger.`});
+      const requested=money(req.body?.funded_nok);const existing=money(funding.allocations?.[month]?.funded_nok);const currentMonth=new Date().toISOString().slice(0,7);const otherTotal=Object.entries(funding.allocations).filter(([k])=>k!==month&&monthPattern.test(k)&&k>=currentMonth).reduce((s,[,x])=>s+money(x?.funded_nok),0);const safe=money(model.safe_to_spend_before_funding_nok);const maxAllowed=Math.max(existing,Math.max(0,safe-otherTotal));if(requested>maxAllowed+0.01)return res.status(409).json({error:`Bare ${Math.round(maxAllowed)} kr kan reserveres uten å bruke penger MoneyOS allerede trenger.`});
       funding.allocations[month]={funded_nok:requested,updated_at:new Date().toISOString(),source:'manual'};
     }else if(action==='allocate_amount'){
       const amount=money(req.body?.amount_nok);if(amount<=0)return res.status(400).json({error:'Beløpet må være større enn 0'});const preview=previewAllocation(model,Math.min(amount,model.available_to_allocate_nok));const existing=money(funding.allocations?.[month]?.funded_nok);funding.allocations[month]={funded_nok:money(existing+preview.reserved_nok),updated_at:new Date().toISOString(),source:'priority_allocation'};
