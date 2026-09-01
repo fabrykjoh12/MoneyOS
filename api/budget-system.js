@@ -41,9 +41,6 @@ function defaultBucket(name) {
   if (['Dagligvarer', 'Transport', 'Helse', 'Utdanning', 'Bank og gebyrer'].includes(name)) return 'essential';
   return 'flex';
 }
-function defaultRollover(bucket) {
-  return bucket === 'sinking';
-}
 function monthlyContribution(fund, month) {
   const saved = money(fund.saved_nok);
   const target = money(fund.target_amount_nok);
@@ -62,11 +59,7 @@ function sanitizeTargets(raw = {}, categories = []) {
   for (const [name, value] of Object.entries(raw ?? {})) {
     if (!allowed.has(name)) continue;
     const bucket = ['fixed', 'essential', 'flex', 'excluded'].includes(value?.bucket) ? value.bucket : defaultBucket(name);
-    out[name] = {
-      bucket,
-      target_nok: money(value?.target_nok),
-      rollover: value?.rollover === true
-    };
+    out[name] = { bucket, target_nok: money(value?.target_nok), rollover: value?.rollover === true };
   }
   return out;
 }
@@ -82,7 +75,6 @@ function sanitizeFunds(raw = []) {
     is_active: item?.is_active !== false
   })).filter(item => item.name);
 }
-
 async function getConfig(sql) {
   const rows = await sql`
     SELECT id, COALESCE(extracted_summary, '{}'::jsonb) AS summary
@@ -104,7 +96,6 @@ export default async function handler(req, res) {
     const month = cleanMonth(req.method === 'GET' ? req.query?.month : req.body?.month);
     const config = await getConfig(sql);
     if (!config) return res.status(500).json({ error: 'MoneyOS-konfigurasjonen mangler' });
-
     const categoriesRows = await sql`SELECT name FROM categories ORDER BY name`;
     const categories = categoriesRows.map(row => row.name);
 
@@ -112,22 +103,17 @@ export default async function handler(req, res) {
       const current = config.summary?.budget_system ?? {};
       const monthPlans = { ...(current.month_plans ?? {}) };
       const action = text(req.body?.action, 40) || 'save_plan';
-
       if (action === 'save_plan') {
-        const categoryTargets = sanitizeTargets(req.body?.category_targets, categories);
         monthPlans[month] = {
           planning_income_nok: nullableMoney(req.body?.planning_income_nok),
           savings_target_nok: money(req.body?.savings_target_nok),
           flex_rollover: req.body?.flex_rollover === true,
-          category_targets: categoryTargets,
+          category_targets: sanitizeTargets(req.body?.category_targets, categories),
           updated_at: new Date().toISOString()
         };
-      } else if (action === 'save_funds') {
-        // handled below
-      } else {
+      } else if (action !== 'save_funds') {
         return res.status(400).json({ error: 'Ukjent budsjett-handling' });
       }
-
       const next = {
         version: 1,
         method: 'cash_envelope_flex',
@@ -142,49 +128,29 @@ export default async function handler(req, res) {
       `;
       return res.status(200).json({ ok: true });
     }
-
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
     const [historyRows, actualRows, recurringRows, dashboardRows] = await Promise.all([
-      sql`
-        SELECT extracted_summary->'monthly' AS monthly
-        FROM documents
-        WHERE extracted_summary ? 'monthly'
-        ORDER BY document_date DESC NULLS LAST, created_at DESC
-        LIMIT 1
-      `,
+      sql`SELECT extracted_summary->'monthly' AS monthly FROM documents WHERE extracted_summary ? 'monthly' ORDER BY document_date DESC NULLS LAST, created_at DESC LIMIT 1`,
       sql`
         SELECT COALESCE(c.name, 'Annet') AS category, ROUND(SUM(t.amount)::numeric, 2) AS spent
-        FROM transactions t
-        LEFT JOIN categories c ON c.id = t.category_id
-        WHERE t.transaction_type = 'expense'
-          AND COALESCE(t.is_pending, false) = false
+        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.transaction_type = 'expense' AND COALESCE(t.is_pending, false) = false
           AND t.transaction_date >= ${month + '-01'}::date
           AND t.transaction_date < (${month + '-01'}::date + interval '1 month')
         GROUP BY COALESCE(c.name, 'Annet')
       `,
       sql`
         SELECT r.name, COALESCE(c.name, 'Annet') AS category, r.amount, r.cadence, r.next_due_date,
-          ROUND((CASE r.cadence
-            WHEN 'daily' THEN r.amount * 365.25 / 12
-            WHEN 'weekly' THEN r.amount * 52 / 12
-            WHEN 'biweekly' THEN r.amount * 26 / 12
-            WHEN 'monthly' THEN r.amount
-            WHEN 'quarterly' THEN r.amount / 3
-            WHEN 'yearly' THEN r.amount / 12
-            ELSE r.amount END)::numeric, 2) AS monthly_amount
-        FROM recurring_items r
-        LEFT JOIN categories c ON c.id = r.category_id
-        WHERE r.item_type = 'expense' AND r.is_active = true
-        ORDER BY monthly_amount DESC, r.name
+          ROUND((CASE r.cadence WHEN 'daily' THEN r.amount * 365.25 / 12 WHEN 'weekly' THEN r.amount * 52 / 12 WHEN 'biweekly' THEN r.amount * 26 / 12 WHEN 'monthly' THEN r.amount WHEN 'quarterly' THEN r.amount / 3 WHEN 'yearly' THEN r.amount / 12 ELSE r.amount END)::numeric, 2) AS monthly_amount
+        FROM recurring_items r LEFT JOIN categories c ON c.id = r.category_id
+        WHERE r.item_type = 'expense' AND r.is_active = true ORDER BY monthly_amount DESC, r.name
       `,
       sql`SELECT finance_dashboard() AS dashboard`
     ]);
 
     const historical = historyRows[0]?.monthly ?? {};
-    const completeMonths = Object.keys(historical)
-      .filter(key => monthPattern.test(key) && key < month)
-      .sort().reverse().slice(0, 6);
+    const completeMonths = Object.keys(historical).filter(key => monthPattern.test(key) && key < month).sort().reverse().slice(0, 6);
     const suggestionByCategory = {};
     for (const category of categories) {
       const values = completeMonths.map(key => Number(historical?.[key]?.expenses?.[category] ?? 0));
@@ -201,7 +167,7 @@ export default async function handler(req, res) {
         bucket,
         target_nok: saved ? money(saved.target_nok) : (bucket === 'essential' ? money(suggestionByCategory[category]) : 0),
         suggested_nok: money(suggestionByCategory[category]),
-        rollover: saved?.rollover === true || defaultRollover(bucket)
+        rollover: saved?.rollover === true
       };
     }
 
@@ -212,16 +178,10 @@ export default async function handler(req, res) {
     const carry = {};
     for (const category of categories) {
       const prev = prevPlan?.category_targets?.[category];
-      carry[category] = prev?.rollover === true
-        ? Math.round((Number(prev.target_nok ?? 0) - Number(prevActual?.[category] ?? 0)) * 100) / 100
-        : 0;
+      carry[category] = prev?.rollover === true ? Math.round((Number(prev.target_nok ?? 0) - Number(prevActual?.[category] ?? 0)) * 100) / 100 : 0;
     }
 
-    const funds = sanitizeFunds(system.sinking_funds).map(fund => ({
-      ...fund,
-      monthly_contribution_nok: monthlyContribution(fund, month),
-      remaining_to_goal_nok: Math.max(0, money(fund.target_amount_nok) - money(fund.saved_nok))
-    }));
+    const funds = sanitizeFunds(system.sinking_funds).map(fund => ({ ...fund, monthly_contribution_nok: monthlyContribution(fund, month), remaining_to_goal_nok: Math.max(0, money(fund.target_amount_nok) - money(fund.saved_nok)) }));
     const dashboard = dashboardRows[0]?.dashboard ?? {};
     const fixedMonthly = recurringRows.reduce((sum, row) => sum + Number(row.monthly_amount ?? 0), 0);
     const essentialTarget = Object.entries(targets).filter(([, value]) => value.bucket === 'essential').reduce((sum, [, value]) => sum + Number(value.target_nok ?? 0), 0);
@@ -231,31 +191,25 @@ export default async function handler(req, res) {
     const planningIncome = savedPlan?.planning_income_nok == null ? null : Number(savedPlan.planning_income_nok);
     const savingsTarget = Number(savedPlan?.savings_target_nok ?? 0);
     const flexBudget = planningIncome == null ? null : Math.max(0, planningIncome - fixedMonthly - essentialTarget - sinkingMonthly - savingsTarget);
-    const flexCarry = savedPlan?.flex_rollover === true && prevPlan
-      ? Number(prevPlan.flex_budget_nok ?? 0) - Object.entries(prevPlan.category_targets ?? {}).filter(([, value]) => value?.bucket === 'flex').reduce((sum, [name]) => sum + Number(prevActual?.[name] ?? 0), 0)
-      : 0;
+
+    let flexCarry = 0;
+    if (savedPlan?.flex_rollover === true && prevPlan?.planning_income_nok != null) {
+      const prevEssential = Object.entries(prevPlan.category_targets ?? {}).filter(([, value]) => value?.bucket === 'essential').reduce((sum, [, value]) => sum + Number(value?.target_nok ?? 0), 0);
+      const prevFlexSpent = Object.entries(prevPlan.category_targets ?? {}).filter(([, value]) => value?.bucket === 'flex').reduce((sum, [name]) => sum + Number(prevActual?.[name] ?? 0), 0);
+      const prevFundMonthly = sanitizeFunds(system.sinking_funds).filter(fund => fund.is_active).reduce((sum, fund) => sum + monthlyContribution(fund, previous), 0);
+      const prevFlexBudget = Math.max(0, Number(prevPlan.planning_income_nok) - fixedMonthly - prevEssential - prevFundMonthly - Number(prevPlan.savings_target_nok ?? 0));
+      flexCarry = prevFlexBudget - prevFlexSpent;
+    }
 
     return res.status(200).json({
-      month,
-      method: 'cash_envelope_flex',
-      plan_saved: !!savedPlan,
-      planning_income_nok: planningIncome,
-      savings_target_nok: savingsTarget,
-      flex_rollover: savedPlan?.flex_rollover === true,
-      categories: targets,
-      actual_by_category: actual,
-      carry_by_category: carry,
-      fixed_items: recurringRows,
-      fixed_monthly_total: Math.round(fixedMonthly * 100) / 100,
-      essential_target_total: Math.round(essentialTarget * 100) / 100,
-      essential_spent_total: Math.round(essentialSpent * 100) / 100,
-      flex_budget_nok: flexBudget == null ? null : Math.round(flexBudget * 100) / 100,
-      flex_spent_nok: Math.round(flexSpent * 100) / 100,
-      flex_carry_nok: Math.round(flexCarry * 100) / 100,
-      sinking_funds: funds,
-      sinking_monthly_total: Math.round(sinkingMonthly * 100) / 100,
-      overview: dashboard.overview ?? {},
-      history_months_used: completeMonths
+      month, method: 'cash_envelope_flex', plan_saved: !!savedPlan,
+      planning_income_nok: planningIncome, savings_target_nok: savingsTarget, flex_rollover: savedPlan?.flex_rollover === true,
+      categories: targets, actual_by_category: actual, carry_by_category: carry,
+      fixed_items: recurringRows, fixed_monthly_total: Math.round(fixedMonthly * 100) / 100,
+      essential_target_total: Math.round(essentialTarget * 100) / 100, essential_spent_total: Math.round(essentialSpent * 100) / 100,
+      flex_budget_nok: flexBudget == null ? null : Math.round(flexBudget * 100) / 100, flex_spent_nok: Math.round(flexSpent * 100) / 100, flex_carry_nok: Math.round(flexCarry * 100) / 100,
+      sinking_funds: funds, sinking_monthly_total: Math.round(sinkingMonthly * 100) / 100,
+      overview: dashboard.overview ?? {}, history_months_used: completeMonths
     });
   } catch (error) {
     console.error(error);
