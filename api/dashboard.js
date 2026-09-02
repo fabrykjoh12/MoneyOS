@@ -170,13 +170,12 @@ export default async function handler(req, res) {
     payload.review_candidates = config.review_candidates ?? [];
     payload.inactive_notes = config.inactive_notes ?? '';
 
-    // Money reserved for future budget months is not free spending money. Keep the
-    // database/dashboard calculation as the base value, then layer explicit budget
-    // funding on top so allocations are auditable and can be released later.
+    // Only future budget months lock cash. When a reserved month starts, its money
+    // becomes the active month's budget and is released from the future-reserve layer.
     const currentMonth = new Date().toISOString().slice(0, 7);
     const fundingAllocations = config.budget_system?.funding?.allocations ?? {};
     const reservedFuture = Object.entries(fundingAllocations)
-      .filter(([month]) => /^\d{4}-\d{2}$/.test(month) && month >= currentMonth)
+      .filter(([month]) => /^\d{4}-\d{2}$/.test(month) && month > currentMonth)
       .reduce((sum, [, value]) => sum + Number(value?.funded_nok ?? 0), 0);
     const baseSafe = Number(payload.overview?.safe_to_spend ?? 0);
     const adjustedSafe = Math.max(0, baseSafe - reservedFuture);
