@@ -51,8 +51,6 @@ export default async function handler(req,res){
         }:null
       };
     });
-    const futureMonths=Object.entries(allocations)
-      .filter(([month])=>monthPattern.test(month)&&month>=currentMonth&&money(arguments[1]?.funded_nok)>0);
     const fundingByMonth=Object.entries(allocations)
       .filter(([month,value])=>monthPattern.test(month)&&month>=currentMonth&&money(value?.funded_nok)>0)
       .sort(([a],[b])=>a.localeCompare(b))
