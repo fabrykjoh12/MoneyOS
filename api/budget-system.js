@@ -80,13 +80,14 @@ function sanitizeTemplate(raw = {}, categories = []) {
     savings_target_nok: money(raw?.savings_target_nok),
     flex_rollover: raw?.flex_rollover === true,
     category_targets: sanitizeTargets(raw?.category_targets, categories),
+    source_month: monthPattern.test(String(raw?.source_month ?? '')) ? String(raw.source_month) : null,
     updated_at: text(raw?.updated_at, 40) || null
   };
 }
 function activeFundingTotal(system) {
   const currentMonth = new Date().toISOString().slice(0, 7);
   return Object.entries(system?.funding?.allocations ?? {})
-    .filter(([month]) => monthPattern.test(month) && month >= currentMonth)
+    .filter(([month]) => monthPattern.test(month) && month > currentMonth)
     .reduce((sum, [, value]) => sum + money(value?.funded_nok), 0);
 }
 async function getConfig(sql) {
