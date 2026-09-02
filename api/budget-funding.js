@@ -52,7 +52,7 @@ async function buildMonth(sql,config,month){
   const funding=system.funding?.allocations??{};
   const funded=money(funding?.[month]?.funded_nok);
   const currentMonth=new Date().toISOString().slice(0,7);
-  const activeFunding=Object.entries(funding).filter(([key,value])=>monthPattern.test(key)&&key>=currentMonth&&money(value?.funded_nok)>0);
+  const activeFunding=Object.entries(funding).filter(([key,value])=>monthPattern.test(key)&&key>currentMonth&&money(value?.funded_nok)>0);
   const allAllocated=activeFunding.reduce((s,[,x])=>s+money(x?.funded_nok),0);
   const dashboard=dashboardRows[0]?.dashboard??{};
   const safe=money(dashboard?.overview?.safe_to_spend);
@@ -90,8 +90,9 @@ export default async function handler(req,res){
     if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
     const action=text(req.body?.action,30);
     const current=config.summary?.budget_system??{};const funding={...(current.funding??{}),allocations:{...(current.funding?.allocations??{})},income_allocations:{...(current.funding?.income_allocations??{})}};
+    if(action!=='clear_funding'&&month<=nowMonth)return res.status(409).json({error:'MoneyOS reserverer bare penger til fremtidige måneder. Inneværende måned er allerede aktiv.'});
     if(action==='set_funding'){
-      const requested=money(req.body?.funded_nok);const existing=money(funding.allocations?.[month]?.funded_nok);const currentMonth=new Date().toISOString().slice(0,7);const otherTotal=Object.entries(funding.allocations).filter(([k])=>k!==month&&monthPattern.test(k)&&k>=currentMonth).reduce((s,[,x])=>s+money(x?.funded_nok),0);const safe=money(model.safe_to_spend_before_funding_nok);const maxAllowed=Math.max(existing,Math.max(0,safe-otherTotal));if(requested>maxAllowed+0.01)return res.status(409).json({error:`Bare ${Math.round(maxAllowed)} kr kan reserveres uten å bruke penger MoneyOS allerede trenger.`});
+      const requested=money(req.body?.funded_nok);const existing=money(funding.allocations?.[month]?.funded_nok);const otherTotal=Object.entries(funding.allocations).filter(([k])=>k!==month&&monthPattern.test(k)&&k>nowMonth).reduce((s,[,x])=>s+money(x?.funded_nok),0);const safe=money(model.safe_to_spend_before_funding_nok);const maxAllowed=Math.max(existing,Math.max(0,safe-otherTotal));if(requested>maxAllowed+0.01)return res.status(409).json({error:`Bare ${Math.round(maxAllowed)} kr kan reserveres uten å bruke penger MoneyOS allerede trenger.`});
       funding.allocations[month]={funded_nok:requested,updated_at:new Date().toISOString(),source:'manual'};
     }else if(action==='allocate_amount'){
       const amount=money(req.body?.amount_nok);if(amount<=0)return res.status(400).json({error:'Beløpet må være større enn 0'});const preview=previewAllocation(model,Math.min(amount,model.available_to_allocate_nok));const existing=money(funding.allocations?.[month]?.funded_nok);funding.allocations[month]={funded_nok:money(existing+preview.reserved_nok),updated_at:new Date().toISOString(),source:'priority_allocation'};
