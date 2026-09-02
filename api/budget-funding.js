@@ -14,15 +14,17 @@ function fundContribution(fund,month){const target=money(fund?.target_amount_nok
 async function configRow(sql){const rows=await sql`SELECT id,COALESCE(extracted_summary,'{}'::jsonb) AS summary FROM documents WHERE document_type='moneyos_config' AND source_name='MoneyOS private config' ORDER BY document_date DESC NULLS LAST,created_at DESC LIMIT 1`;return rows[0]??null;}
 async function latestSalary(sql){const rows=await sql`SELECT t.id::text AS id,t.transaction_date,ROUND(t.amount::numeric,2) AS amount,t.merchant,t.description FROM transactions t WHERE t.transaction_type='income' AND COALESCE(t.is_pending,false)=false AND lower(COALESCE(t.description,'')) LIKE '%lønn%' ORDER BY t.transaction_date DESC,t.id DESC LIMIT 1`;return rows[0]??null;}
 async function salaryById(sql,id){const rows=await sql`SELECT t.id::text AS id,t.transaction_date,ROUND(t.amount::numeric,2) AS amount,t.merchant,t.description FROM transactions t WHERE t.id::text=${id} AND t.transaction_type='income' AND COALESCE(t.is_pending,false)=false AND lower(COALESCE(t.description,'')) LIKE '%lønn%' LIMIT 1`;return rows[0]??null;}
+async function recentIncomes(sql){return sql`SELECT t.id::text AS id,t.transaction_date,ROUND(t.amount::numeric,2) AS amount,t.merchant,t.description FROM transactions t WHERE t.transaction_type='income' AND COALESCE(t.is_pending,false)=false AND t.transaction_date>=CURRENT_DATE-interval '120 days' ORDER BY t.transaction_date DESC,t.id DESC LIMIT 20`;}
 
 async function buildMonth(sql,config,month){
   const categoriesRows=await sql`SELECT name FROM categories ORDER BY name`;
   const categories=categoriesRows.map(x=>x.name);
-  const [historyRows,recurringRows,dashboardRows,salary]=await Promise.all([
+  const [historyRows,recurringRows,dashboardRows,salary,incomeRows]=await Promise.all([
     sql`SELECT extracted_summary->'monthly' AS monthly FROM documents WHERE extracted_summary ? 'monthly' ORDER BY document_date DESC NULLS LAST,created_at DESC LIMIT 1`,
     sql`SELECT r.name,r.amount,r.cadence,r.next_due_date,ROUND((CASE r.cadence WHEN 'daily' THEN r.amount*365.25/12 WHEN 'weekly' THEN r.amount*52/12 WHEN 'biweekly' THEN r.amount*26/12 WHEN 'monthly' THEN r.amount WHEN 'quarterly' THEN r.amount/3 WHEN 'yearly' THEN r.amount/12 ELSE r.amount END)::numeric,2) AS monthly_amount FROM recurring_items r WHERE r.item_type='expense' AND r.is_active=true`,
     sql`SELECT finance_dashboard() AS dashboard`,
-    latestSalary(sql)
+    latestSalary(sql),
+    recentIncomes(sql)
   ]);
   const historical=historyRows[0]?.monthly??{};
   const historyMonths=Object.keys(historical).filter(k=>monthPattern.test(k)&&k<month).sort().reverse().slice(0,6);
@@ -50,20 +52,22 @@ async function buildMonth(sql,config,month){
   const funding=system.funding?.allocations??{};
   const funded=money(funding?.[month]?.funded_nok);
   const currentMonth=new Date().toISOString().slice(0,7);
-  const activeFunding=Object.entries(funding).filter(([key])=>monthPattern.test(key)&&key>=currentMonth);
+  const activeFunding=Object.entries(funding).filter(([key,value])=>monthPattern.test(key)&&key>=currentMonth&&money(value?.funded_nok)>0);
   const allAllocated=activeFunding.reduce((s,[,x])=>s+money(x?.funded_nok),0);
   const dashboard=dashboardRows[0]?.dashboard??{};
   const safe=money(dashboard?.overview?.safe_to_spend);
   const available=Math.max(0,safe-allAllocated);
   const incomeAllocations=system.funding?.income_allocations??{};
   const latestSalaryInfo=salary?{id:String(salary.id),transaction_date:salary.transaction_date,amount_nok:money(salary.amount),merchant:salary.merchant??null,description:salary.description??null,already_allocated:!!incomeAllocations[String(salary.id)],allocation:incomeAllocations[String(salary.id)]??null}:null;
+  const recentIncome=incomeRows.map(row=>{const assignment=incomeAllocations[String(row.id)]??null;return{id:String(row.id),transaction_date:row.transaction_date,amount_nok:money(row.amount),merchant:row.merchant??null,description:row.description??null,explicit_assignment:assignment?{target_month:assignment.target_month??null,reserved_nok:money(assignment.reserved_nok),left_unassigned_nok:money(assignment.left_unassigned_nok),allocated_at:assignment.allocated_at??null}:null};});
+  const fundingByMonth=activeFunding.sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>({month:key,funded_nok:money(value?.funded_nok),source:value?.source??null,updated_at:value?.updated_at??null}));
   const tiers={
     minimum:{goal_nok:money(minimum),funded_nok:Math.min(funded,minimum)},
     true_expenses:{goal_nok:money(sinking),funded_nok:Math.min(Math.max(0,funded-minimum),sinking)},
     savings:{goal_nok:money(savings),funded_nok:Math.min(Math.max(0,funded-robust),savings)},
     flex:{goal_nok:money(flex),funded_nok:Math.min(Math.max(0,funded-robust-savings),flex)}
   };
-  return{month,plan_saved:!!plan,planning_income_nok:planningIncome,fixed_nok:money(fixed),essential_nok:money(essential),sinking_nok:money(sinking),savings_nok:savings,flex_nok:money(flex),minimum_month_nok:money(minimum),robust_month_nok:money(robust),full_month_nok:money(full),funded_nok:funded,remaining_to_minimum_nok:money(Math.max(0,minimum-funded)),remaining_to_robust_nok:money(Math.max(0,robust-funded)),remaining_to_full_nok:money(Math.max(0,full-funded)),funded_percent_full:full>0?Math.min(100,Math.round(funded/full*1000)/10):0,tiers,available_to_allocate_nok:available,safe_to_spend_before_funding_nok:safe,total_future_funding_nok:money(allAllocated),latest_salary:latestSalaryInfo,category_detail,history_months_used:historyMonths};
+  return{month,plan_saved:!!plan,planning_income_nok:planningIncome,fixed_nok:money(fixed),essential_nok:money(essential),sinking_nok:money(sinking),savings_nok:savings,flex_nok:money(flex),minimum_month_nok:money(minimum),robust_month_nok:money(robust),full_month_nok:money(full),funded_nok:funded,remaining_to_minimum_nok:money(Math.max(0,minimum-funded)),remaining_to_robust_nok:money(Math.max(0,robust-funded)),remaining_to_full_nok:money(Math.max(0,full-funded)),funded_percent_full:full>0?Math.min(100,Math.round(funded/full*1000)/10):0,tiers,available_to_allocate_nok:available,ready_to_assign_nok:money(available),safe_to_spend_before_funding_nok:safe,base_safe_to_spend_nok:safe,total_future_funding_nok:money(allAllocated),reserved_future_nok:money(allAllocated),overcommitted_nok:money(Math.max(0,allAllocated-safe)),funding_by_month:fundingByMonth,recent_income:recentIncome,latest_salary:latestSalaryInfo,category_detail,history_months_used:historyMonths};
 }
 function previewAllocation(model,amount){
   let left=money(amount);const steps=[];
@@ -96,7 +100,7 @@ export default async function handler(req,res){
     }else if(action==='clear_funding'){
       delete funding.allocations[month];for(const[id,entry]of Object.entries(funding.income_allocations)){if(entry?.target_month===month)delete funding.income_allocations[id];}
     }else return res.status(400).json({error:'Ukjent handling'});
-    const next={...current,version:Math.max(2,Number(current.version??1)),funding,updated_at:new Date().toISOString()};
+    const next={...current,version:Math.max(3,Number(current.version??1)),funding,updated_at:new Date().toISOString()};
     await sql`UPDATE documents SET extracted_summary=jsonb_set(COALESCE(extracted_summary,'{}'::jsonb),'{budget_system}',${JSON.stringify(next)}::jsonb,true) WHERE id=${config.id}`;
     const updatedConfig={...config,summary:{...config.summary,budget_system:next}};const updated=await buildMonth(sql,updatedConfig,month);return res.status(200).json({ok:true,...updated});
   }catch(error){console.error(error);return res.status(500).json({error:'Kunne ikke oppdatere finansieringen'});}
