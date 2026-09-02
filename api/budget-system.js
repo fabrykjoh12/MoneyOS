@@ -75,6 +75,20 @@ function sanitizeFunds(raw = []) {
     is_active: item?.is_active !== false
   })).filter(item => item.name);
 }
+function sanitizeTemplate(raw = {}, categories = []) {
+  return {
+    savings_target_nok: money(raw?.savings_target_nok),
+    flex_rollover: raw?.flex_rollover === true,
+    category_targets: sanitizeTargets(raw?.category_targets, categories),
+    updated_at: text(raw?.updated_at, 40) || null
+  };
+}
+function activeFundingTotal(system) {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  return Object.entries(system?.funding?.allocations ?? {})
+    .filter(([month]) => monthPattern.test(month) && month >= currentMonth)
+    .reduce((sum, [, value]) => sum + money(value?.funded_nok), 0);
+}
 async function getConfig(sql) {
   const rows = await sql`
     SELECT id, COALESCE(extracted_summary, '{}'::jsonb) AS summary
@@ -103,6 +117,8 @@ export default async function handler(req, res) {
       const current = config.summary?.budget_system ?? {};
       const monthPlans = { ...(current.month_plans ?? {}) };
       const action = text(req.body?.action, 40) || 'save_plan';
+      let template = current.template ? sanitizeTemplate(current.template, categories) : null;
+
       if (action === 'save_plan') {
         monthPlans[month] = {
           planning_income_nok: nullableMoney(req.body?.planning_income_nok),
@@ -111,13 +127,37 @@ export default async function handler(req, res) {
           category_targets: sanitizeTargets(req.body?.category_targets, categories),
           updated_at: new Date().toISOString()
         };
+      } else if (action === 'save_template') {
+        const sourcePlan = current.month_plans?.[month];
+        if (!sourcePlan) return res.status(409).json({ error: 'Lagre månedsplanen før du lagrer den som normalmåned' });
+        template = {
+          savings_target_nok: money(sourcePlan.savings_target_nok),
+          flex_rollover: sourcePlan.flex_rollover === true,
+          category_targets: sanitizeTargets(sourcePlan.category_targets, categories),
+          source_month: month,
+          updated_at: new Date().toISOString()
+        };
+      } else if (action === 'apply_template') {
+        if (!current.template) return res.status(409).json({ error: 'Ingen normalmåned er lagret ennå' });
+        const clean = sanitizeTemplate(current.template, categories);
+        const existing = current.month_plans?.[month] ?? {};
+        monthPlans[month] = {
+          planning_income_nok: existing.planning_income_nok == null ? null : nullableMoney(existing.planning_income_nok),
+          savings_target_nok: clean.savings_target_nok,
+          flex_rollover: clean.flex_rollover,
+          category_targets: clean.category_targets,
+          template_applied_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
       } else if (action !== 'save_funds') {
         return res.status(400).json({ error: 'Ukjent budsjett-handling' });
       }
       const next = {
-        version: 1,
+        ...current,
+        version: Math.max(3, Number(current.version ?? 1)),
         method: 'cash_envelope_flex',
         month_plans: monthPlans,
+        template,
         sinking_funds: action === 'save_funds' ? sanitizeFunds(req.body?.sinking_funds) : sanitizeFunds(current.sinking_funds),
         updated_at: new Date().toISOString()
       };
@@ -201,6 +241,16 @@ export default async function handler(req, res) {
       flexCarry = prevFlexBudget - prevFlexSpent;
     }
 
+    const reservedFuture = activeFundingTotal(system);
+    const rawOverview = dashboard.overview ?? {};
+    const baseSafe = money(rawOverview.safe_to_spend);
+    const adjustedSafe = money(Math.max(0, baseSafe - reservedFuture));
+    const overview = {
+      ...rawOverview,
+      safe_to_spend: adjustedSafe,
+      daily_safe_to_spend: money(adjustedSafe / Math.max(1, Number(rawOverview.days_to_payday ?? 1)))
+    };
+
     return res.status(200).json({
       month, method: 'cash_envelope_flex', plan_saved: !!savedPlan,
       planning_income_nok: planningIncome, savings_target_nok: savingsTarget, flex_rollover: savedPlan?.flex_rollover === true,
@@ -209,7 +259,11 @@ export default async function handler(req, res) {
       essential_target_total: Math.round(essentialTarget * 100) / 100, essential_spent_total: Math.round(essentialSpent * 100) / 100,
       flex_budget_nok: flexBudget == null ? null : Math.round(flexBudget * 100) / 100, flex_spent_nok: Math.round(flexSpent * 100) / 100, flex_carry_nok: Math.round(flexCarry * 100) / 100,
       sinking_funds: funds, sinking_monthly_total: Math.round(sinkingMonthly * 100) / 100,
-      overview: dashboard.overview ?? {}, history_months_used: completeMonths
+      overview,
+      budget_funding: { reserved_future_nok: money(reservedFuture), base_safe_to_spend_nok: baseSafe },
+      template_available: !!system.template,
+      template: system.template ? sanitizeTemplate(system.template, categories) : null,
+      history_months_used: completeMonths
     });
   } catch (error) {
     console.error(error);
