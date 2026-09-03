@@ -56,6 +56,13 @@ export default async function handler(req, res) {
 
     if(req.method==='POST'){
       const action=String(req.body?.action??'');
+      if(action==='save_end_reserve'){
+        const raw=Number(req.body?.amount_jpy);
+        if(!Number.isFinite(raw)||raw<0||raw>100000000)return res.status(400).json({error:'Skriv inn en gyldig sluttbuffer i JPY'});
+        const amount=Math.round(raw),nextJapan={...japan,end_reserve_jpy:amount,end_reserve_updated_at:new Date().toISOString()};
+        await sql`UPDATE documents SET extracted_summary=jsonb_set(COALESCE(extracted_summary,'{}'::jsonb),'{japan}',${JSON.stringify(nextJapan)}::jsonb,true) WHERE id=${config.id}`;
+        return res.status(200).json({ok:true,end_reserve_jpy:amount});
+      }
       if(action==='save_flex_allocation'){
         const allocation=normalizeFlexAllocation(req.body?.allocation,flexKeys);
         if(!Object.keys(allocation).length)return res.status(400).json({error:'Fordelingen må inneholde minst én fleksibel Japan-pott'});
@@ -126,7 +133,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       scope,month,arrival_date:arrival,stay_end:stayEnd,period_start:periodStart,period_end:periodEnd,
-      planning_rate:budget.planning_rate??null,living_categories:livingCategories,flex_allocation:savedFlex,transactions,review_candidates:review,
+      planning_rate:budget.planning_rate??null,living_categories:livingCategories,flex_allocation:savedFlex,end_reserve_jpy:Math.max(0,Number(japan.end_reserve_jpy??0)),transactions,review_candidates:review,
       classification_summary:{included_bank:included.length,wallet:walletExpenses.length,needs_review:review.length}
     });
   } catch (error) {
