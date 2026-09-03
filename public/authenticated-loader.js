@@ -10,6 +10,10 @@
       scripts:['dashboard-cache.js','budget-lock-guard.js','months.js','subscriptions.js','transaction-editor.js','budget-system.js','active-month.js','active-month-drilldown.js','pending-budget.js','budget-guidance.js','budget-funding.js','budget-health.js','budget-ready.js','budget-template.js','month-handoff.js','month-close.js','budget-history.js','true-expense-funding.js','budget-runway.js','budget-envelopes.js']
     },
     plans:{
+      styles:['simple-home.css','simple-japan.css'],
+      scripts:['simple-japan.js']
+    },
+    plansAdvanced:{
       styles:['japan-budget.css','japan-actual.css','trip-budgets.css','japan-wallet.css','japan-bank-transfer.css','japan-runway-v2.css','japan-pace.css','japan-flex.css','japan-costs.css','purchase-check.css','scenario-planner.css','monthly-margin.css'],
       scripts:['dashboard-cache.js','japan-budget.js','japan-actual.js','trip-budgets.js','japan-wallet.js','japan-bank-transfer.js','japan-runway-v2.js','japan-runway-freshness.js','japan-home-sync.js','japan-pace.js','japan-flex.js','japan-costs.js','purchase-check.js','scenario-planner.js','monthly-margin.js','money-search-japan-status.js']
     }
