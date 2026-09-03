@@ -4,6 +4,7 @@ const msDateFmt=new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short'});
 let msData=null,msLoading=false;
 function msN(v){return Number(v??0)}
 function msKr(v){return `${msMoney.format(msN(v))} kr`}
+function msY(v){return `¥${msMoney.format(msN(v))}`}
 function msEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function msMonthDate(key){const [y,m]=String(key).split('-').map(Number);return new Date(y,m-1,1,12)}
 function msParse(v){return v?new Date(`${String(v).slice(0,10)}T12:00:00`):null}
@@ -25,7 +26,7 @@ function ensureSearch(){
   const home=document.querySelector('.home-shell');if(!home)return false;
   const heading=home.querySelector('.home-heading');
   const box=document.createElement('section');box.id='moneyos-command';box.className='ms-command';
-  box.innerHTML=`<div class="ms-label"><span>SPØR MONEYOS</span><small>Data, ikke gjetting</small></div><form id="ms-form"><input id="ms-input" type="search" autocomplete="off" placeholder="F.eks. hvor mye brukte jeg på mat i juli?"/><button type="submit">Søk</button></form><div id="ms-result" class="ms-result hidden"></div><div class="ms-chips"><button type="button" data-ms="Hvor mye kan jeg bruke frem til lønn?">Til lønn</button><button type="button" data-ms="Hva er min dyreste måned?">Dyreste måned</button><button type="button" data-ms="Hva er mitt dyreste abonnement?">Dyreste abonnement</button><button type="button" data-ms="Hvor mye har jeg i faste kostnader?">Faste kostnader</button></div>`;
+  box.innerHTML=`<div class="ms-label"><span>SPØR MONEYOS</span><small>Data, ikke gjetting</small></div><form id="ms-form"><input id="ms-input" type="search" autocomplete="off" placeholder="F.eks. hvor mye kan jeg bruke i Japan?"/><button type="submit">Søk</button></form><div id="ms-result" class="ms-result hidden"></div><div class="ms-chips"><button type="button" data-ms="Hvor mye kan jeg bruke i Japan?">Japan</button><button type="button" data-ms="Hvor mye kan jeg bruke frem til lønn?">Til lønn</button><button type="button" data-ms="Hva er min dyreste måned?">Dyreste måned</button><button type="button" data-ms="Hva er mitt dyreste abonnement?">Dyreste abonnement</button><button type="button" data-ms="Hvor mye har jeg i faste kostnader?">Faste kostnader</button></div>`;
   heading?.insertAdjacentElement('afterend',box);
   document.getElementById('ms-form')?.addEventListener('submit',e=>{e.preventDefault();runSearch(document.getElementById('ms-input').value)});
   box.querySelectorAll('[data-ms]').forEach(b=>b.addEventListener('click',()=>{document.getElementById('ms-input').value=b.dataset.ms;runSearch(b.dataset.ms)}));
@@ -48,11 +49,20 @@ function findCategory(q){for(const group of categoryAliases){if(group.keys.some(
 function categoryTotal(names){return(msData?.monthly_breakdown??[]).reduce((sum,m)=>sum+names.reduce((s,name)=>s+msN(m.categories?.[name]),0),0)}
 function topCategory(month){const entries=Object.entries(month?.categories??{}).map(([name,value])=>({name,value:msN(value)})).filter(x=>x.value>0).sort((a,b)=>b.value-a.value);return entries[0]??null}
 function result(title,value,copy){const root=document.getElementById('ms-result');root.classList.remove('hidden');root.innerHTML=`<div><span>${msEsc(title)}</span><strong>${msEsc(value)}</strong><p>${msEsc(copy)}</p></div>`}
-function runSearch(raw){
+async function msGetRunway(){for(let i=0;i<40&&!window.MoneyOSJapanRunway;i++)await new Promise(r=>setTimeout(r,100));try{return await window.MoneyOSJapanRunway?.get?.()}catch{return null}}
+async function runSearch(raw){
   const q=String(raw??'').trim().toLowerCase();if(!q||!msData)return;
   const fixed=[...(msData.fixed_costs??[])].sort((a,b)=>msN(b.monthly_amount)-msN(a.monthly_amount));
   const months=msData.monthly_breakdown??[];
 
+  if(/japan/.test(q)&&(/kan.*bruke|fri|fleksibel|andre ting|sosial|per dag|per uke|per måned|per mnd|budsjett/i.test(q))){
+    const r=await msGetRunway();if(!r){result('Japan · fri pott','—','Japan-runwayen kunne ikke lastes. MoneyOS viser ikke et alternativt estimat.');return}
+    const warning=r.missing_costs>0?` Foreløpig: ${r.missing_costs} kostnad${r.missing_costs===1?'':'er'} mangler pris.`:'';
+    if(/per dag|daglig/.test(q)){result('Japan · fri grense per dag',msY(Math.max(0,r.daily_jpy)),`${msY(Math.max(0,r.free_jpy))} fri pott fordelt over ${r.days_remaining} dager.${warning}`);return}
+    if(/per uke|ukentlig/.test(q)){result('Japan · fri grense per uke',msY(Math.max(0,r.weekly_jpy)),`${msY(Math.max(0,r.free_jpy))} fri pott over resten av oppholdet.${warning}`);return}
+    if(/per måned|per mnd|månedlig/.test(q)){result('Japan · fri grense per 30 dager',msY(Math.max(0,r.month30_jpy)),`${msY(Math.max(0,r.free_jpy))} fri pott over resten av oppholdet.${warning}`);return}
+    result('Japan · fri pott resten av oppholdet',msY(Math.max(0,r.free_jpy)),`${msY(Math.max(0,r.month30_jpy))} per 30 dager · ${msY(Math.max(0,r.weekly_jpy))} per uke · ${msY(Math.max(0,r.daily_jpy))} per dag. ${r.days_remaining} dager igjen.${warning}`);return;
+  }
   if(/kan jeg bruke|kan jeg bruke.*lønn|frem til lønn|fram til lønn|trygt.*bruke/i.test(q)){
     const o=msData.overview??{};result('Trygt frem til neste lønn',msKr(o.safe_to_spend),`${msKr(o.daily_safe_to_spend)} per dag i MoneyOS-beregningen. Kjente regninger før lønn er allerede satt av.`);return;
   }
@@ -83,9 +93,6 @@ function runSearch(raw){
   if(/hvor mye.*har jeg|saldo|penger totalt/i.test(q)&&!/brukt/i.test(q)){
     result('Penger totalt nå',msKr(msData.overview?.total_balance),'Alle aktive kontoer i MoneyOS, inkludert penger som holdes utenfor daglig forbruk.');return;
   }
-  if(/japan/.test(q)&&/fri|fleksibel|andre ting|sosial/i.test(q)){
-    const cats=msData.japan_plan?.budget?.living_categories??[];const flex=cats.filter(x=>x.kind==='flexible').reduce((s,x)=>s+msN(x.amount_jpy),0);const f=new Intl.NumberFormat('nb-NO',{maximumFractionDigits:0});result('Japan · fri pott',`¥${f.format(flex)} / mnd`,`Omtrent ¥${f.format(flex/30*7)} per uke i den nåværende planen.`);return;
-  }
   const cats=findCategory(q);
   const month=findMonth(q);
   if(month){
@@ -101,8 +108,8 @@ function runSearch(raw){
   if(cats&&/totalt|historikk|alle måned/i.test(q)){
     const total=categoryTotal(cats);result(`${cats.join(' + ')} · hele historikken`,msKr(total),`Summert over ${months.length} måneder med tilgjengelige kategorisammendrag.`);return;
   }
-  result('Fant ikke et sikkert svar','—','Prøv «dyreste måned», «hvor mye brukte jeg på mat i juli?», «mat totalt», «neste regning», «hvor mye kan jeg bruke frem til lønn?» eller «hva er mitt dyreste abonnement?». MoneyOS svarer ikke når spørsmålet ikke kan beregnes sikkert.');
+  result('Fant ikke et sikkert svar','—','Prøv «hvor mye kan jeg bruke i Japan?», «Japan per dag», «dyreste måned», «hvor mye brukte jeg på mat i juli?», «neste regning» eller «hvor mye kan jeg bruke frem til lønn?». MoneyOS svarer ikke når spørsmålet ikke kan beregnes sikkert.');
 }
 async function loadMoneySearch(){if(msLoading)return;const app=document.getElementById('app');if(!app||app.classList.contains('hidden'))return;msLoading=true;try{const r=await fetch('/api/dashboard',{credentials:'same-origin',cache:'no-store'});if(!r.ok)return;msData=await r.json();ensureSearch()}finally{msLoading=false}}
-function bootMoneySearch(){const app=document.getElementById('app');if(!app)return;const run=()=>{if(!app.classList.contains('hidden'))loadMoneySearch()};run();new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(loadMoneySearch,550));document.addEventListener('keydown',e=>{if(e.key==='k'&&(e.ctrlKey||e.metaKey)){e.preventDefault();document.getElementById('ms-input')?.focus()}})}
+function bootMoneySearch(){const app=document.getElementById('app');if(!app)return;const run=()=>{if(!app.classList.contains('hidden'))loadMoneySearch()};run();new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(loadMoneySearch,550));document.addEventListener('moneyos:japan-wallet-updated',()=>setTimeout(loadMoneySearch,350));document.addEventListener('moneyos:transaction-updated',()=>setTimeout(loadMoneySearch,350));document.addEventListener('keydown',e=>{if(e.key==='k'&&(e.ctrlKey||e.metaKey)){e.preventDefault();document.getElementById('ms-input')?.focus()}})}
 bootMoneySearch();
