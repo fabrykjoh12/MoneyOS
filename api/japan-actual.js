@@ -18,6 +18,14 @@ function exactJpy(description){
   return Number.isFinite(value)&&value>0?value:null;
 }
 function cleanKey(value){const key=String(value??'').trim();return japanKeys.includes(key)?key:null;}
+function normalizeFlexAllocation(raw,flexKeys){
+  const keys=[...flexKeys];
+  if(!keys.length)return{};
+  const parsed={};let total=0;
+  for(const key of keys){const n=Number(raw?.[key]);if(Number.isFinite(n)&&n>=0){parsed[key]=n;total+=n}}
+  if(total<=0)return{};
+  return Object.fromEntries(keys.map(key=>[key,Math.round((Number(parsed[key]??0)/total)*10000)/100]));
+}
 async function getConfig(sql){
   const rows=await sql`
     SELECT id,COALESCE(extracted_summary,'{}'::jsonb) AS summary
@@ -42,9 +50,19 @@ export default async function handler(req, res) {
     const arrival=String(japan.arrival_date??budget.period_start??'2026-09-07').slice(0,10);
     const stayEnd=String(budget.period_end??arrival).slice(0,10);
     const map=config.summary?.japan_transaction_map&&typeof config.summary.japan_transaction_map==='object'?config.summary.japan_transaction_map:{};
+    const livingCategories=Array.isArray(budget.living_categories)?budget.living_categories:[];
+    const flexKeys=new Set(livingCategories.filter(x=>x?.kind==='flexible'&&cleanKey(x?.key)).map(x=>x.key));
+    const savedFlex=normalizeFlexAllocation(japan.flex_allocation,flexKeys);
 
     if(req.method==='POST'){
       const action=String(req.body?.action??'');
+      if(action==='save_flex_allocation'){
+        const allocation=normalizeFlexAllocation(req.body?.allocation,flexKeys);
+        if(!Object.keys(allocation).length)return res.status(400).json({error:'Fordelingen må inneholde minst én fleksibel Japan-pott'});
+        const nextJapan={...japan,flex_allocation:allocation,flex_allocation_updated_at:new Date().toISOString()};
+        await sql`UPDATE documents SET extracted_summary=jsonb_set(COALESCE(extracted_summary,'{}'::jsonb),'{japan}',${JSON.stringify(nextJapan)}::jsonb,true) WHERE id=${config.id}`;
+        return res.status(200).json({ok:true,flex_allocation:allocation});
+      }
       if(action!=='classify_transaction')return res.status(400).json({error:'Ukjent handling'});
       const id=String(req.body?.transaction_id??'').trim(),include=req.body?.include===true,categoryKey=include?cleanKey(req.body?.category_key):null;
       if(!id||id.length>128)return res.status(400).json({error:'Ugyldig transaksjon'});
@@ -108,7 +126,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       scope,month,arrival_date:arrival,stay_end:stayEnd,period_start:periodStart,period_end:periodEnd,
-      planning_rate:budget.planning_rate??null,living_categories:budget.living_categories??[],transactions,review_candidates:review,
+      planning_rate:budget.planning_rate??null,living_categories:livingCategories,flex_allocation:savedFlex,transactions,review_candidates:review,
       classification_summary:{included_bank:included.length,wallet:walletExpenses.length,needs_review:review.length}
     });
   } catch (error) {
