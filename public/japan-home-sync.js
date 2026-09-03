@@ -1,0 +1,8 @@
+const jhsFmt=new Intl.NumberFormat('nb-NO',{maximumFractionDigits:0});
+function jhsY(v){return `¥${jhsFmt.format(Number(v||0))}`}
+function jhsKr(v){return `${jhsFmt.format(Number(v||0))} kr`}
+let jhsBusy=false;
+async function jhsRunway(){for(let i=0;i<40&&!window.MoneyOSJapanRunway;i++)await new Promise(r=>setTimeout(r,100));try{return await window.MoneyOSJapanRunway?.get?.()}catch{return null}}
+async function jhsRender(){if(jhsBusy)return;const copy=document.getElementById('japan-home-copy');if(!copy)return;jhsBusy=true;try{const r=await jhsRunway();if(!r){copy.textContent='Japan-runway kunne ikke lastes. MoneyOS viser ikke et alternativt estimat.';return}if(r.free_nok<0){copy.textContent=`Planen mangler ${jhsKr(Math.abs(r.free_nok))} før alle kjente faste og nødvendige kostnader er dekket.`;return}copy.textContent=`Fri runway: ${jhsY(r.free_jpy)} totalt · ${jhsY(r.weekly_jpy)}/uke · ${jhsY(r.daily_jpy)}/dag · ${r.days_remaining} dager igjen${r.missing_costs?` · foreløpig, ${r.missing_costs} kostnad${r.missing_costs===1?'':'er'} mangler pris`:''}.`}finally{jhsBusy=false}}
+function jhsBoot(){const app=document.getElementById('app');const run=()=>{if(app&&!app.classList.contains('hidden'))setTimeout(jhsRender,1200)};run();if(app)new MutationObserver(run).observe(app,{attributes:true,attributeFilter:['class']});document.getElementById('refresh')?.addEventListener('click',()=>setTimeout(jhsRender,1400));document.addEventListener('moneyos:japan-wallet-updated',()=>setTimeout(jhsRender,450));document.addEventListener('moneyos:transaction-updated',()=>setTimeout(jhsRender,450));setTimeout(jhsRender,2600)}
+jhsBoot();
