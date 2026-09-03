@@ -2,7 +2,13 @@
   const nextFetch=window.fetch.bind(window),locked=new Map(),cache=new Map(),inFlight=new Map(),TTL=2500;
   function info(input){try{const raw=typeof input==='string'||input instanceof URL?input:input?.url,u=new URL(raw,location.href);if(u.origin!==location.origin||u.pathname!=='/api/budget-system')return null;return{url:u,month:u.searchParams.get('month')}}catch{return null}}
   function currentMonth(){return document.getElementById('bs-month')?.value||null}
-  function paint(){const month=currentMonth(),btn=document.getElementById('bs-edit');if(!btn||!month)return;const isLocked=locked.get(month)===true;btn.disabled=isLocked;btn.textContent=isLocked?'Måneden er låst':'Rediger plan';btn.title=isLocked?'Åpne måneden igjen i Månedsavslutning før planen endres.':''}
+  function paint(){
+    const month=currentMonth(),btn=document.getElementById('bs-edit');if(!btn||!month)return;
+    const isLocked=locked.get(month)===true,nextText=isLocked?'Måneden er låst':'Rediger plan',nextTitle=isLocked?'Åpne måneden igjen i Månedsavslutning før planen endres.':'';
+    if(btn.disabled!==isLocked)btn.disabled=isLocked;
+    if(btn.textContent!==nextText)btn.textContent=nextText;
+    if(btn.title!==nextTitle)btn.title=nextTitle;
+  }
   function remember(month,value){if(month)locked.set(month,!!value);setTimeout(paint,0)}
   function invalidate(){cache.clear();inFlight.clear()}
   window.moneyosInvalidateBudgetCache=invalidate;
@@ -25,8 +31,8 @@
     inFlight.set(key,promise);const response=await promise;rememberResponse(month,response);return response.clone();
   };
   document.addEventListener('change',e=>{if(e.target?.id==='bs-month')setTimeout(paint,50)});
-  document.addEventListener('moneyos:budget-updated',invalidate);
+  document.addEventListener('moneyos:budget-updated',()=>{invalidate();setTimeout(paint,0)});
   document.addEventListener('moneyos:transaction-updated',invalidate);
+  document.addEventListener('moneyos:features-loaded',e=>{if(e.detail?.view==='money')setTimeout(paint,50)});
   document.addEventListener('click',e=>{if(e.target?.closest?.('#refresh'))invalidate()},true);
-  new MutationObserver(paint).observe(document.documentElement,{childList:true,subtree:true});
 })();
